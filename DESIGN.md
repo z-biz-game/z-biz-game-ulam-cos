@@ -115,7 +115,35 @@ node --input-type=module -e "import {MEASURED,BRUTE} from './js/data/lots.js';
 最后一行是"发货声明有没有变得不成立"的最短查法：`unmeasured` 必须 0，`claims` 里不许有
 `held: false`，`disagreementCount` 必须 0。
 
+浏览器闸还有一遍是**前缀形态**（Pages 真正怎么端这个站点）：把仓库挂在一个路径段下面，用那个
+URL 再跑一次同一批场景。CI 的 browser job 已经这么做；本机手动跑：
+
+```bash
+root=$(mktemp -d); ln -s "$PWD" "$root/z-biz-game-ulam-cos"
+python3 -m http.server 5299 --bind 127.0.0.1 --directory "$root" &
+SKIP_UNIT=1 ALLOW_ORPHAN_CHROME=1 CDP_PORT=9398 WEB_PORT=5298 \
+  BASE_URL=http://localhost:5299/z-biz-game-ulam-cos/ bash tools/verify.sh
+```
+
+（本机这台机器的系统代理会把发往 `127.0.0.1` 的请求接走，所以这里写 `localhost`；CI 上没这个
+代理，`ci.yml` 里用的就是 `127.0.0.1`。）
+
 ## 8. 踩过的坑
+
+### 本机门禁 63 行全绿，发到 Pages 只剩 44 行在跑
+
+`@save` 要在页内 import 引擎模块，好跟门面对一下函数身份（`store.solve === solve`），当时写的是
+`import` 一个斜杠开头的路径。斜杠开头是 **origin 根**：本机的 `server.cjs` 拿仓库当根，正好解得着；
+Pages 把站点挂在 `/z-biz-game-ulam-cos/` 下面，同一个串就成了
+`https://z-biz-game.github.io/js/core/storage.js` —— 404。而一次失败的动态 import 把整段注入脚本
+拦腰抛断，Pages 上 `@save` 只落 44 行（其中 6 行红），本机同一份代码 63 行全绿：差的 19 行**根本没跑**，
+红的那几条里还包括"纪录跨重载读回来""前沿还在"这种真·存档主张。产品本身没坏 —— 页面自己的 import
+全是相对说明符，`pages.yml` 逐条查过 —— 坏的是这条路径在发货形态下从来没被跑过。
+
+两处一起改。测试侧：`MOD(p)`（`tools/playtest.mjs:206`）以 `document.baseURI` 为基解析，前缀是什么
+都指向同一份发货代码。门禁侧：`ci.yml` 的 browser job 跑两遍，第二遍把仓库软链进一个路径段、用
+`python3 -m http.server` 端起来再把 `BASE_URL` 指过去 —— 就是 Pages 端它的样子。根形态的服务器
+分不清 `/js/x.js` 和 `js/x.js`，所以只跑根形态的门禁，等于这一维压根没测。
 
 ### 门面上少一个名字，结案整条路静默断掉
 

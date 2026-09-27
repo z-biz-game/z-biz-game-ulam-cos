@@ -199,6 +199,11 @@ const HEAD = `const rows = [];
     const TXT = (id) => String(D(id).textContent);
     const c = window.ulam;
     const KEY = 'ulam.save.v1';
+    // 测试要在页内拿引擎模块做对照（store.solve 与模块级 solve 是不是同一个函数对象），
+    // 但站点在 Pages 上挂在 /<repo>/ 前缀下：斜杠开头的说明符是 origin 根，本地 server 恰好
+    // 以仓库为根所以看不出问题，发到 Pages 就 404，而一个 404 的动态 import 把整段场景拦腰抛断。
+    // 以文档自己的 baseURI 为基解析，前缀是什么都指向同一份发货代码。
+    const MOD = (p) => import(new URL(p, document.baseURI).href);
     // view.measure() clamps dpr to 1..3 before it sizes the backing store; geom() does not report it,
     // so the probe reads the same window.devicePixelRatio the view reads.
     const DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
@@ -425,11 +430,11 @@ const SAVE_A = `(async () => {
   rec('点出来的胜利：7-1 打完了（done 且 won）', s.done === true && s.won === true, { threw: w.err || null, asked: s.asked, grade: s.grade });
   const shell = (() => { const raw = JSON.parse(localStorage.getItem(KEY) || 'null'); return { raw, t: c.store.totals(), header: TXT('totals'), rec: c.store.record('7-1'), unlocked: c.store.unlocked }; })();
   // 前沿推到哪一关不是写死的：7-1 是战役第 indexById+1 关，赢它就该把前沿推到下一关。
-  const lib = await import('/js/core/library.js');
+  const lib = await MOD('js/core/library.js');
   const frontier = lib.indexById('7-1') + 2;
   rec('赢完 7-1 后三处一起动：磁盘与内存都有纪录、解锁前沿推到下一关、页眉 1/14（曾经红在 js/main.js:391 叫 store.solve 而门面上没这个名字）', shell.rec !== null && shell.rec.solved === true && shell.rec.best === s.asked && shell.t.solved === 1 && shell.t.plays === 1 && shell.t.wins === 1 && shell.unlocked === frontier && /1\\/14 关拿下/.test(shell.header), { frontier, ...shell });
   rec('结案卡片浮起来了：星星/判词/结算都非空（同一个 finish() 若在第 391 行抛，后面的渲染就跑不到）', /★/.test(TXT('stars')) && TXT('verdict').length > 0 && /用了/.test(TXT('tally')) && s.veil === true, { veil: s.veil, stars: TXT('stars'), verdict: TXT('verdict'), tally: TXT('tally').slice(0, 60) });
-  const m = await import('/js/core/storage.js');
+  const m = await MOD('js/core/storage.js');
   rec('两条写路径指向同一份实现：模块级 solve 与门面 store.solve 是同一个函数对象', m.store.solve === m.solve && typeof m.store.solve === 'function' && typeof c.store.record === 'function', { same: m.store.solve === m.solve, storeKeys: Object.keys(c.store) });
   m.solve('#/synthetic/15-0', { questions: 4, par: 4, hints: 0, lies: 0, won: true });
   m.solve('#/synthetic/15-0', { questions: 9, par: 4, hints: 1, lies: 1, won: true });
@@ -445,7 +450,7 @@ const SAVE_A = `(async () => {
   rec('今天的每日还没打过', c.store.dailyDone(today) === null, c.store.dailyDone(today));
   const wd = call(() => c.autoPlay(24));
   rec('每日题照表打赢：won=true', c.state.done === true && c.state.won === true, { threw: wd.err || null, asked: c.state.asked });
-  rec('每日一题打赢也钉不进 daily：finish() 第 398 行的 markDaily 被第 391 行的抛挡住（同一条根因）', (() => { const mk = c.store.dailyDone(today); return !!mk && mk.done === true && mk.questions === c.state.asked; })(), { day: today, mark: c.store.dailyDone(today), won: c.state.won, asked: c.state.asked });
+  rec('每日一题打赢也写得进 daily：第 391 行的 store.solve 通了，才轮得到第 398 行的 markDaily（这一条曾经红在门面上少 solve 这个名字）', (() => { const mk = c.store.dailyDone(today); return !!mk && mk.done === true && mk.questions === c.state.asked; })(), { day: today, mark: c.store.dailyDone(today), won: c.state.won, asked: c.state.asked });
   rec('整个游戏只写那一条存档键', Object.keys(localStorage).filter((k) => /ulam\\./.test(k)).join(',') === KEY, Object.keys(localStorage));
   return { rows };
 })()`;
@@ -475,7 +480,7 @@ const SAVE_B = `(async () => {
   rec('下一次渲染把页眉带回零（页眉读的是同一份 totals()）', /0\\/14 关拿下/.test(TXT('totals')) && /已解锁 1/.test(TXT('totals')), TXT('totals'));
   D('wipe').click(); await sleep(90);
   rec('「清空存档」第一次点击只是上膛（问一句要不要真的清）', D('toast').hidden === false && /再点一次/.test(TXT('toast')), { toast: TXT('toast'), armed: true });
-  const m2 = await import('/js/core/storage.js');
+  const m2 = await MOD('js/core/storage.js');
   m2.solve('4-1x', { questions: 5, par: 5, hints: 0, lies: 0, won: true });
   rec('为清空按钮造一条纪录（磁盘上现在有东西了）', !!c.store.record('4-1x') && localStorage.getItem(KEY) !== null, c.store.record('4-1x'));
   D('wipe').click(); await sleep(240);
@@ -515,7 +520,7 @@ const SAVE_D = `(async () => {
   rec('daily:"nope"（字符串不是对象）读成空对象', JSON.stringify(c.store.daily) === '{}' && c.store.dailyDone('2026-09-27') === null, { daily: c.store.daily, done: c.store.dailyDone('2026-09-27') });
   rec('stats 缺的字段补 0、在场的那个留着（plays 0 / wins 2 / losses 0 / questions 0 / hints 0 / lies 0）', (() => { const st = c.store.stats; return st.plays === 0 && st.wins === 2 && st.losses === 0 && st.questions === 0 && st.hints === 0 && st.lies === 0; })(), c.store.stats);
   rec('totals() 在残缺档上照样算得出来：solved 1 / atPar 0 / plays 0 / wins 2 / losses 0', (() => { const t = c.store.totals(); return t.solved === 1 && t.atPar === 0 && t.plays === 0 && t.wins === 2 && t.losses === 0; })(), c.store.totals());
-  const m4 = await import('/js/core/storage.js');
+  const m4 = await MOD('js/core/storage.js');
   m4.solve('synthetic-partial', { questions: 9, par: 4, hints: 2, lies: 1, won: true });
   rec('残缺档上还能写：best 只降不升（9 问并不回 3）', (() => { const r = c.store.record('synthetic-partial'); return r.best === 3 && r.plays === 8 && r.solved === true; })(), c.store.record('synthetic-partial'));
   m4.solve('synthetic-partial', { questions: 2, par: 4, hints: 0, lies: 0, won: true });

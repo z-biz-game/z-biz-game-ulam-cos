@@ -85,3 +85,30 @@ jobs:
           SKIP_UNIT: 1
           WD_TIMEOUT: 420
         run: bash tools/verify.sh
+      # The same scenarios against the URL shape production actually uses. GitHub Pages serves this
+      # repo under a path prefix (`https://z-biz-game.github.io/<repo>/`), while server.cjs makes the
+      # repo the document ROOT — and a root-shaped server cannot tell `/js/core/storage.js` apart
+      # from `js/core/storage.js`. So a page-side specifier with a leading slash passes every local
+      # gate and then 404s in production, taking the whole injected script down with it (this is
+      # exactly what @save did once on the live site: 6 assertions red, all four node suites green).
+      - name: Headless playtest under a path prefix (how Pages serves us)
+        env:
+          SKIP_UNIT: 1
+          WD_TIMEOUT: 420
+          WEB_PORT: 5298
+          CDP_PORT: 9398
+        run: |
+          root=$(mktemp -d)
+          ln -s "$GITHUB_WORKSPACE" "$root/z-biz-game-ulam-cos"
+          python3 -m http.server 5299 --bind 127.0.0.1 --directory "$root" &
+          SERVER=$!
+          trap 'kill $SERVER 2>/dev/null' EXIT
+          for i in $(seq 1 40); do
+            curl -fsS -m 2 http://127.0.0.1:5299/z-biz-game-ulam-cos/ >/dev/null 2>&1 && break
+            sleep 0.25
+          done
+          curl -fsS -m 3 http://127.0.0.1:5299/z-biz-game-ulam-cos/js/main.js >/dev/null
+          SKIP_UNIT=1 ALLOW_ORPHAN_CHROME=1 \
+            BASE_URL=http://127.0.0.1:5299/z-biz-game-ulam-cos/ \
+            bash tools/verify.sh
+
