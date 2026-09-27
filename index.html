@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1319">
+<meta name="description" content="谎话藏数 ULAM：一个数藏在 1..n 里，你最多问 q 个子集问题，对方最多撒 k 个谎。屏幕上并排印着 Berlekamp 体积界的预测与极小极大 DP 量出的真值——教科书说 4 问必中的那一格，真值是 5 问。">
+<!-- Inline data-URI favicon: a Pages deploy has no /favicon.ico, and the 404 it produces is
+     counted as a console error by tools/verify.sh. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1319'/%3E%3Crect x='4' y='4' width='10' height='10' rx='2' fill='%233ddad7'/%3E%3Crect x='18' y='4' width='10' height='10' rx='2' fill='%23223440'/%3E%3Crect x='4' y='18' width='10' height='10' rx='2' fill='%23223440'/%3E%3Crect x='18' y='18' width='10' height='10' rx='2' fill='%23f0b544'/%3E%3C/svg%3E">
+<title>谎话藏数 · ULAM</title>
+<link rel="stylesheet" href="css/game.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1 class="brand"><button type="button" id="home" class="brand-mark" title="回到关卡库">◈</button>谎话藏数<small>ULAM</small></h1>
+  <nav class="modes" id="modes" aria-label="模式">
+    <button type="button" data-mode="campaign">战役</button>
+    <button type="button" data-mode="daily">每日</button>
+    <button type="button" data-mode="random">随机</button>
+  </nav>
+  <p class="totals" id="totals"></p>
+</header>
+
+<!-- ============================== 关卡库 ============================== -->
+<section id="view-menu" class="menu" hidden>
+  <article class="card rules" id="rules">
+    <h2>怎么玩</h2>
+    <ol>
+      <li>心里想好：一个数藏在 <code>1..n</code> 里。屏幕另一侧的对手知道它是几，并且<b>最多可以撒 <code>k</code> 次谎</b>。</li>
+      <li>每一问就是<b>刷亮一批格子</b>，然后问：“秘密在亮着的格子里吗？” 亮空集、亮全集都算合法的一问。</li>
+      <li>你最多问 <code>q</code> 问。问完之后（或任何时候只剩一个候选时）必须<b>点一个格子指认</b>——指对了才算赢。</li>
+      <li>每答一次，格子会变色：<b>与“这个数是秘密”相矛盾的答案条数</b>就是它的颜色深度。到 <code>k+1</code> 就出局。</li>
+      <li>顶部<b>谎账本</b>点亮的是你能证明的谎数下界，不是对手实际撒了几个——那个数要到结案才摊开。</li>
+    </ol>
+    <p class="rules-key">面板上永远并排印着两个数：<b class="b">体积界</b>是教科书算出来的“至少几问”，<b class="p">精确值</b>是极小极大 DP 量出来的“几问必中”。
+    两者不相等的格子就是这关真正的难度——<b>界会说谎，DP 不会</b>。</p>
+  </article>
+
+  <article class="card resume" id="resume">
+    <h2>接着上局</h2>
+    <p id="resume-line" class="empty">没有未完的一局。</p>
+    <div class="resume-actions"><button type="button" id="resume-go" hidden>继续这一局</button></div>
+  </article>
+
+  <article class="card records" id="records">
+    <h2>本机成绩</h2>
+    <p id="records-line"></p>
+    <ul id="records-list" class="records-list"></ul>
+  </article>
+
+  <article class="card bands" id="bandlist">
+    <h2>关卡库 <small id="bandmeta"></small></h2>
+  </article>
+</section>
+
+<!-- ============================== 对局 ============================== -->
+<section id="view-game" class="stage">
+  <div class="board">
+    <canvas id="board" aria-label="藏数盘"></canvas>
+    <p class="hint-line" id="hintline"></p>
+    <div class="veil" id="veil" hidden>
+      <div class="veil-card">
+        <p class="stars" id="stars"></p>
+        <h2 id="verdict"></h2>
+        <p class="tally" id="tally"></p>
+        <ul class="reveal" id="reveal"></ul>
+        <div class="veil-actions">
+          <button type="button" id="again">再来一次</button>
+          <button type="button" id="next" class="primary">下一关</button>
+          <button type="button" id="library">关卡库</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <p class="crumbs" id="crumbs"></p>
+    <dl class="readout" id="readout"></dl>
+    <div class="controls">
+      <button type="button" id="ask" class="primary">问出去</button>
+      <button type="button" id="clear">清空亮格</button>
+      <button type="button" id="undo">撤销</button>
+      <button type="button" id="hint">提示</button>
+      <button type="button" id="restart">重开</button>
+      <button type="button" id="share">分享</button>
+    </div>
+    <ul class="legend" id="legend">
+      <li><i class="sw sw-lit"></i>亮着：这一问算进“在亮格里吗”</li>
+      <li><i class="sw sw-h0"></i>0 次矛盾 <i class="sw sw-h1"></i>1 次 <i class="sw sw-h2"></i>2 次 <i class="sw sw-h3"></i>3 次</li>
+      <li><i class="sw sw-dead"></i>出局：与全部答案的矛盾已超过 <span id="legendk">k</span> 次</li>
+      <li><i class="sw sw-alive"></i>结案时与全部答案相容的候选（多于一个 = 那次对是蒙的）</li>
+    </ul>
+    <details class="drawer" id="drawer" open>
+      <summary>证明抽屉 · 每一答之后的权重状态 <span id="prooftotal"></span></summary>
+      <ol id="prooflog" class="prooflog"></ol>
+      <p class="proof-note" id="prooffoot"></p>
+    </details>
+    <details class="about">
+      <summary>屏幕上每个数字是谁算出来的</summary>
+      <p><code>par</code> 是 <code>js/core/solve.js</code> 的精确 DP（<code>win(a,q)</code> 递归），
+      <code>bound</code> 是 <code>js/core/volume.js</code> 的 Berlekamp 体积界
+      <code>V(a,q)=Σ aᵢ·Σ_{j≤k−i}C(q,j)</code>。两者都由 <code>node tools/bake.mjs</code> 在构建期算好，
+      写进 <code>js/data/lots.js</code>，并且被第三条独立路线 <code>js/core/brute.js</code>（具体候选集，不聚合）对过表。
+      <b>浏览器只读表，不搜索</b>：整局打完 <code>ulam.searchNodes()</code> 仍然是 0。</p>
+      <p>体积界只有一个方向是定理：<code>可胜 ⟹ V ≤ 2^q</code>。反过来不成立——本仓的头条就是它连
+      <code>k=1</code> 都不充分：3 个数、1 个谎，界说 4 问，真值 5 问。</p>
+      <p class="save">成绩只存在这台设备的浏览器里。<button type="button" id="wipe">清空存档</button></p>
+    </details>
+  </aside>
+</section>
+
+<p class="toast" id="toast" hidden></p>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

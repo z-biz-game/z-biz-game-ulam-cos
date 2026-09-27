@@ -1,0 +1,41 @@
+{
+  "name": "ulam-cos",
+  "version": "1.0.0",
+  "description": "谎话藏数 ULAM — 浏览器原生的 Rényi–Ulam 说谎者搜数. 每一关“几问必中”由极小极大 DP 量出, 并与 Berlekamp 体积界、具体候选集 minimax 两条独立路线互相复验.",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs 5222",
+    "electron": "electron .",
+    "bake": "node tools/bake.mjs",
+    "check": "for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && echo OK",
+    "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
+    "test": "npm run check && npm run unit",
+    "verify": "bash tools/verify.sh"
+  },
+  "keywords": [
+    "game",
+    "puzzle",
+    "ulam-game",
+    "liar-game",
+    "twenty-questions",
+    "search-theory",
+    "minimax",
+    "information-theory",
+    "procedural",
+    "zero-dependency",
+    "electron"
+  ],
+  "author": "z-biz-game",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "build": {
+    "appId": "com.zbiz.ulam",
+    "productName": "Ulam",
+    "mac": { "category": "public.app-category.puzzle-games" },
+    "win": { "target": "nsis" },
+    "linux": { "target": "AppImage" }
+  }
+}

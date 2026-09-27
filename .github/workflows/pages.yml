@@ -1,0 +1,73 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No bundler, no install, no build step: the game ships plain ES modules, so the site is a
+      # file copy. Only index.html + css/ + js/ are reachable from the page — keep the static
+      # server, the electron shell, the bake tool, the tests and the CI config out of the artifact.
+      # The whole baked policy table for all 14 campaign lots (every 谎话藏数 position the minimax DP
+      # solved at build time) ships inside js/data/lots.js like any other source file, so the browser
+      # never solves anything to print a verdict: a click costs a Map.get.
+      - name: Assemble static site
+        run: |
+          mkdir _site
+          cp index.html _site/
+          cp -r css js _site/
+      - name: The artifact is self-contained
+        run: |
+          test -f _site/index.html
+          test -f _site/js/main.js
+          test -f _site/js/view.js
+          test -f _site/js/data/lots.js
+          test -f _site/js/core/storage.js
+          test -f _site/css/game.css
+          test ! -e _site/server.cjs
+          test ! -e _site/tools
+          test ! -e _site/electron
+          grep -q '<canvas' _site/index.html
+          # Every byte the page reaches for must be inside the artifact: the shell imports its
+          # modules with relative specifiers, so one missing file is a blank board at 3am on a
+          # phone, and one bare/npm specifier would mean this repo is not zero-dependency after all.
+          node --input-type=module -e '
+          import { readdirSync, statSync, readFileSync, existsSync } from "fs";
+          import { join, dirname, resolve } from "path";
+          const walk = (d) => readdirSync(d).flatMap((n) => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : (p.endsWith(".js") ? [p] : []); });
+          let bad = 0;
+          for (const f of walk("_site/js")) {
+            for (const m of readFileSync(f, "utf8").matchAll(/from\s+[\x27"]([^"\x27]+)[\x27"]/g)) {
+              const s = m[1];
+              if (/^[a-z]+:/.test(s)) { console.log("non-relative specifier", f, s); bad = 1; continue; }
+              if (!existsSync(resolve(dirname(f), s))) { console.log("import target missing", f, s); bad = 1; }
+            }
+          }
+          process.exit(bad);
+          '
+          # No remote assets of any kind: the favicon is an inline data: SVG and the board is drawn.
+          ! grep -rhoE "https?://[^\"'\'' )]+" _site/js _site/css _site/index.html | grep -v "1999/xhtml\|w3.org" | grep -q .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

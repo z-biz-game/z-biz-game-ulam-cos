@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The minimax DP, the Berlekamp volume bound, the concrete-candidate third route and the shipped
+  # campaign are all pure ES modules: no browser, no install step, no dependency resolution anywhere
+  # in this repo (package.json has an empty dependencies block and there is no lockfile).
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+      - name: Suites
+        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+
+  # js/data/lots.js is GENERATED (tools/bake.mjs: exact DP × volume bound × concrete-candidate brute
+  # force, three routes that refuse to write unless they agree), so it can drift from the code that
+  # produced it. Re-baking at the default SAMPLE tier must reproduce the shipped file everywhere
+  # EXCEPT the lines that cannot be byte-stable by construction, and those are masked here one at a
+  # time (the count is printed so the mask's blast radius is visible in the log):
+  #   · MEASURED.totals.ms — a wall-clock duration from the run that produced the file;
+  #   · the "three-routes-agree" claim's setting/compared — SAMPLE deliberately scans a smaller
+  #     brute universe than FULL, and that block is re-derived instead of carried.
+  # Everything else, including every byte of the policy table, the campaign and the MINQ table, must
+  # match. The page that ships must also still be the page the tests were written against: a shell
+  # with no canvas is a 404-shaped success.
+  book:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The shipped table re-derives from the bake (machine/tier lines masked, rest byte-exact)
+        run: |
+          cp js/data/lots.js /tmp/shipped.js
+          node tools/bake.mjs --quiet
+          cat > /tmp/norm.py <<'PY'
+          import re, sys
+          src = open(sys.argv[1]).read()
+          hits = 0
+          def ms(m):
+              global hits
+              hits += 1
+              return m.group(1) + '"ms": 0,'
+          out = re.sub(r'^(\s*)"ms": \d+,', ms, src, flags=re.M)
+          i = out.index('"id": "three-routes-agree"')
+          j = out.index('"held"', i)
+          block, n = re.subn(r'"(nMax|kMax|qMax|compared)": \d+', r'"\1": 0', out[i:j])
+          out = out[:i] + block + out[j:]
+          sys.stderr.write('normalised %d ms + %d brute-tier numbers\n' % (hits, n))
+          open(sys.argv[2], 'w').write(out)
+          PY
+          python3 /tmp/norm.py /tmp/shipped.js /tmp/a.js
+          python3 /tmp/norm.py js/data/lots.js /tmp/b.js
+          cmp /tmp/a.js /tmp/b.js
+      - name: The shell is a real page
+        run: test -f index.html && grep -q '<canvas' index.html && grep -q 'js/main.js' index.html
+
+  # The headline of this repo — "a click costs a Map.get, never a DP node" — is only proven by
+  # driving a real page with real mouse events: the canvas hit test, the draft/ask/undo buttons, the
+  # one localStorage key and the 390px layout all live behind `window.ulam` and the pixels of one
+  # canvas. Five scenarios: @boot @play @routes @save @pointer.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Headless playtest
+        env:
+          SKIP_UNIT: 1
+          WD_TIMEOUT: 420
+        run: bash tools/verify.sh

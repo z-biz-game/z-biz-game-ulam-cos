@@ -1,0 +1,179 @@
+/* 谎话藏数 ULAM — one stylesheet, no framework, no build step.
+   Layout: board on the left, the two numbers (界 / 真值) on the right; stacked under 860px so a
+   phone gets a full-width board and a short panel.
+
+   The `--ulam-*` block below is NOT decoration: js/view.js reads every one of those names through
+   getComputedStyle at createView() time, so the canvas palette IS this file. Add a token here and
+   view.js can use it; rename one without updating view.js and the fallback inside tokens() shows
+   up as a colour that disagrees with the DOM — tools/playtest.mjs @pointer asserts a lit cell's
+   centre pixel moves toward --ulam-lit, which is the only thing keeping that contract honest. */
+
+:root {
+  /* palette, dark ink-blue base: deliberately not tango's slate+amber, not chomp's green felt */
+  --ulam-bg: #0d1319;
+  --ulam-bg-2: #121c24;
+  --ulam-panel: #16222c;
+  --ulam-line: rgba(215, 231, 240, 0.11);
+  --ulam-ink: #e7ecf2;
+  --ulam-ink-dim: rgba(231, 236, 242, 0.42);
+  --ulam-accent: #f0b544;
+  --ulam-lit: #3ddad7;
+  --ulam-good: #7fd88f;
+  --ulam-bad: #d64880;
+
+  /* ---- read by js/view.js tokens() ---- */
+  --ulam-plate: rgba(255, 255, 255, 0.04);
+  --ulam-cell: rgba(255, 255, 255, 0.06);
+  --ulam-dead: rgba(231, 236, 242, 0.10);
+  --ulam-heat-0: rgba(61, 218, 215, 0.16);
+  --ulam-heat-1: rgba(240, 181, 68, 0.30);
+  --ulam-heat-2: rgba(235, 120, 80, 0.40);
+  --ulam-heat-3: rgba(214, 72, 128, 0.48);
+
+  --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, "PingFang SC", "Hiragino Sans GB", monospace;
+  --radius: 11px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: radial-gradient(125% 100% at 50% 0%, var(--ulam-bg-2), var(--ulam-bg) 62%);
+  color: var(--ulam-ink); font-family: var(--mono); -webkit-font-smoothing: antialiased;
+  overflow: hidden; user-select: none; cursor: default;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+code { color: var(--ulam-accent); font-size: 0.94em; }
+[hidden] { display: none !important; }
+
+.topbar { display: flex; align-items: center; gap: 16px; padding: 11px 18px; border-bottom: 1px solid var(--ulam-line); }
+.brand { font-size: 16px; letter-spacing: 0.06em; display: flex; align-items: baseline; gap: 8px; font-weight: 600; }
+.brand small { color: var(--ulam-ink-dim); font-size: 10px; letter-spacing: 0.3em; }
+.brand-mark { color: var(--ulam-lit); font-size: 15px; padding: 2px 4px; }
+.brand-mark:hover { color: var(--ulam-accent); }
+.modes { display: flex; gap: 4px; }
+.modes button { padding: 6px 13px; font-size: 13px; color: var(--ulam-ink-dim); border: 1px solid transparent; border-radius: 7px; }
+.modes button:hover { color: var(--ulam-ink); background: rgba(255, 255, 255, 0.04); }
+.modes button[aria-current="true"] { color: var(--ulam-lit); border-color: rgba(61, 218, 215, 0.4); background: rgba(61, 218, 215, 0.08); }
+.totals { margin-left: auto; font-size: 12px; color: var(--ulam-ink-dim); }
+.totals b { color: var(--ulam-accent); font-weight: 600; }
+.totals .warn { color: var(--ulam-bad); }
+
+/* ============================ 关卡库 ============================ */
+.menu { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; padding: 16px 18px; height: calc(100% - 52px); overflow: auto; align-content: start; }
+.card { border: 1px solid var(--ulam-line); border-radius: var(--radius); background: var(--ulam-panel); padding: 14px 16px; }
+.card h2 { font-size: 12px; letter-spacing: 0.16em; color: var(--ulam-ink-dim); font-weight: 600; margin-bottom: 10px; }
+.card h2 small { letter-spacing: 0.02em; text-transform: none; }
+.rules ol { list-style: decimal inside; display: grid; gap: 7px; font-size: 12.5px; line-height: 1.7; }
+.rules b { color: var(--ulam-ink); }
+.rules-key { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--ulam-line); font-size: 12px; line-height: 1.8; color: var(--ulam-ink-dim); }
+.rules-key .b { color: var(--ulam-ink-dim); border-bottom: 1px dotted; }
+.rules-key .p { color: var(--ulam-accent); }
+.resume p { font-size: 12.5px; line-height: 1.8; color: var(--ulam-ink-dim); }
+.resume p.empty { font-style: italic; }
+.resume button, .bands button { margin-top: 10px; padding: 8px 14px; font-size: 13px; border: 1px solid rgba(61, 218, 215, 0.45); border-radius: 8px; color: var(--ulam-lit); background: rgba(61, 218, 215, 0.08); }
+.records p { font-size: 12.5px; line-height: 1.8; }
+.records p b { color: var(--ulam-accent); }
+.records-list { list-style: none; margin-top: 8px; display: grid; gap: 4px; font-size: 11.5px; color: var(--ulam-ink-dim); max-height: 168px; overflow: auto; }
+.records-list span.best { color: var(--ulam-lit); }
+.band { margin-top: 12px; }
+.band h3 { font-size: 11px; letter-spacing: 0.1em; color: var(--ulam-lit); font-weight: 600; margin-bottom: 6px; }
+.band h3 small { color: var(--ulam-ink-dim); letter-spacing: 0; }
+.lot-row { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 12px; font-variant-numeric: tabular-nums; }
+.lot-row button { margin: 0; padding: 4px 10px; font-size: 12px; }
+.lot-row .nm { color: var(--ulam-ink); }
+.lot-row .q { color: var(--ulam-ink-dim); }
+.lot-row .bound { color: var(--ulam-ink-dim); }
+.lot-row .par { color: var(--ulam-accent); }
+.lot-row .diff { color: var(--ulam-bad); }
+.legend-note { margin-top: 10px; font-size: 11px; color: var(--ulam-ink-dim); line-height: 1.7; }
+
+/* ============================= 对局 ============================= */
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 18px; padding: 16px 18px; height: calc(100% - 52px); }
+.board { position: relative; display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+#board { width: 100%; height: 100%; min-height: 0; display: block; touch-action: manipulation; }
+.hint-line { min-height: 20px; font-size: 12px; color: var(--ulam-ink-dim); text-align: center; line-height: 1.6; }
+.hint-line b { color: var(--ulam-lit); font-weight: 600; }
+.hint-line .warn { color: var(--ulam-bad); }
+.hint-line .gold { color: var(--ulam-accent); }
+
+.panel { border: 1px solid var(--ulam-line); border-radius: 13px; background: var(--ulam-panel); padding: 15px; display: flex; flex-direction: column; gap: 13px; overflow: auto; }
+.crumbs { font-size: 12px; color: var(--ulam-ink-dim); letter-spacing: 0.04em; }
+.crumbs b { display: block; font-size: 19px; color: var(--ulam-ink); font-weight: 600; margin-top: 2px; }
+.crumbs .band-tag { color: var(--ulam-lit); }
+
+/* the two numbers the game exists to print, side by side: the bound's opinion and the DP's */
+.readout { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.readout > div { border: 1px solid var(--ulam-line); border-radius: 9px; padding: 8px 10px; background: rgba(255, 255, 255, 0.02); }
+.readout dt { font-size: 10px; color: var(--ulam-ink-dim); letter-spacing: 0.1em; }
+.readout dd { font-size: 19px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.readout dd small { font-size: 10px; color: var(--ulam-ink-dim); }
+.readout .par dd { color: var(--ulam-accent); }
+.readout .bound dd { color: var(--ulam-ink-dim); }
+.readout .left dd { color: var(--ulam-lit); }
+.readout .diff { border-color: rgba(214, 72, 128, 0.55); background: rgba(214, 72, 128, 0.07); }
+.readout .diff dt::after { content: " ≠"; color: var(--ulam-bad); }
+.readout .volume dd { font-size: 13px; }
+
+.controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.controls button { padding: 10px 4px; font-size: 13px; border: 1px solid var(--ulam-line); border-radius: 9px; background: rgba(255, 255, 255, 0.03); color: var(--ulam-ink); }
+.controls button:hover:not(:disabled) { border-color: rgba(61, 218, 215, 0.5); color: var(--ulam-lit); }
+.controls button:disabled { opacity: 0.35; cursor: not-allowed; }
+.controls .primary { border-color: rgba(61, 218, 215, 0.6); color: var(--ulam-lit); background: rgba(61, 218, 215, 0.1); }
+
+.legend { list-style: none; display: grid; gap: 5px; font-size: 11px; color: var(--ulam-ink-dim); }
+.legend li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sw { width: 13px; height: 13px; border-radius: 4px; display: inline-block; border: 1px solid var(--ulam-line); }
+.sw-lit { border: 2px solid var(--ulam-lit); background: rgba(61, 218, 215, 0.16); }
+.sw-h0 { background: var(--ulam-heat-0); }
+.sw-h1 { background: var(--ulam-heat-1); }
+.sw-h2 { background: var(--ulam-heat-2); }
+.sw-h3 { background: var(--ulam-heat-3); }
+.sw-dead { background: var(--ulam-dead); }
+.sw-alive { border: 2px solid rgba(127, 216, 143, 0.6); }
+
+.drawer { border: 1px solid var(--ulam-line); border-radius: 10px; padding: 10px 12px; font-size: 12px; color: var(--ulam-ink-dim); }
+.drawer summary { cursor: pointer; letter-spacing: 0.05em; color: var(--ulam-ink); }
+.drawer #prooftotal { color: var(--ulam-lit); }
+.prooflog { list-style: decimal inside; margin-top: 10px; display: grid; gap: 5px; font-size: 11.5px; font-variant-numeric: tabular-nums; max-height: 210px; overflow: auto; }
+.prooflog li.lied { color: var(--ulam-bad); }
+.prooflog b { color: var(--ulam-lit); font-weight: 600; }
+.proof-note { margin-top: 8px; font-size: 11px; line-height: 1.7; }
+
+.about { font-size: 11px; color: var(--ulam-ink-dim); line-height: 1.75; border-top: 1px solid var(--ulam-line); padding-top: 10px; }
+.about summary { cursor: pointer; letter-spacing: 0.08em; }
+.about p { margin-top: 8px; }
+.about .save { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.about #wipe { font-size: 10px; padding: 5px 9px; color: var(--ulam-ink-dim); border: 1px solid rgba(214, 72, 128, 0.4); border-radius: 7px; }
+
+.veil { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(8, 12, 16, 0.74); backdrop-filter: blur(3px); border-radius: 13px; }
+.veil-card { width: min(360px, 88%); border: 1px solid rgba(61, 218, 215, 0.35); border-radius: 14px; background: var(--ulam-bg-2); padding: 20px; text-align: center; }
+.stars { font-size: 26px; letter-spacing: 0.2em; color: var(--ulam-accent); }
+.veil-card h2 { font-size: 19px; margin: 6px 0 8px; }
+.tally { font-size: 12px; color: var(--ulam-ink-dim); line-height: 1.8; }
+.tally b { color: var(--ulam-ink); }
+.reveal { list-style: none; margin: 12px 0 4px; display: grid; gap: 3px; font-size: 11px; color: var(--ulam-ink-dim); max-height: 128px; overflow: auto; text-align: left; }
+.reveal b { color: var(--ulam-lit); }
+.veil-actions { display: flex; gap: 7px; margin-top: 14px; }
+.veil-actions button { flex: 1; padding: 9px; font-size: 12.5px; border: 1px solid var(--ulam-line); border-radius: 9px; }
+.veil-actions .primary { border-color: rgba(61, 218, 215, 0.6); color: var(--ulam-lit); background: rgba(61, 218, 215, 0.1); }
+
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 9px 16px; border: 1px solid var(--ulam-line); border-radius: 999px; background: var(--ulam-bg-2); font-size: 12px; color: var(--ulam-lit); z-index: 20; }
+.toast[hidden] { display: none; }
+
+@media (max-width: 860px) {
+  body { overflow: auto; }
+  .stage { grid-template-columns: 1fr; height: auto; }
+  .board { height: 62vh; min-height: 340px; }
+  .topbar { flex-wrap: wrap; gap: 8px; padding: 9px 12px; }
+  .totals { margin-left: 0; width: 100%; }
+  .menu { grid-template-columns: 1fr; padding: 12px; }
+  .readout { grid-template-columns: repeat(2, 1fr); }
+  .panel { padding: 12px; }
+}
+
+/* The heat scale is the information; the gold flash on a bumped cell is not. With motion off the
+   flash map stays empty (main.js drops the ids) and nothing animates but the state itself. */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+  .veil { animation: none; }
+}
