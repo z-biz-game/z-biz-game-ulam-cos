@@ -20,7 +20,8 @@ import {
   canAsk, toggle, paint, clearDraft, ask, accuse, undo, reset, hint, grade, reveal, verdictText,
   volumeReadout, idsForProfile, MAX_CELLS,
 } from './core/game.js';
-import { store, persistent, SAVE_KEY } from './core/storage.js';
+import { store, settings, persistent, SAVE_KEY, SETTINGS_KEY } from './core/storage.js';
+import { sound } from './core/sound.js';
 import {
   lotById, campaignOrder, nextLot, indexById, bands, measured, minqTable, greedyReport,
   advisoryReport, validate, lotCount, policyMap,
@@ -43,6 +44,8 @@ const el = {
   viewMenu: $('view-menu'), viewGame: $('view-game'), bandlist: $('bandlist'), bandmeta: $('bandmeta'),
   resumeLine: $('resume-line'), resumeGo: $('resume-go'), recordsLine: $('records-line'),
   recordsList: $('records-list'), legendk: $('legendk'),
+  pause: $('pause'), sound: $('sound'), fullscreen: $('fullscreen'), help: $('help'),
+  helpVeil: $('helpveil'), helpClose: $('help-close'), pauseTag: $('pause-tag'),
 };
 
 const LEVELS = lotCount();
@@ -50,7 +53,9 @@ const LEVELS = lotCount();
 // profiles), and `store` then runs on its memory cache for the rest of the session. The header
 // says so rather than quietly losing the player's records at the tab close.
 const CAN_PERSIST = persistent();
-const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+// 两条 reduceMotion 分支共用这一个读数：CSS 的 @media 关掉 transition/animation，JS 这边关掉
+// 呼吸与金闪（js/view.js setReducedMotion），标题卡退成静图。
+const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const RESUME_KEY = 'ulam.resume.v1';
 
 const app = {
@@ -64,6 +69,7 @@ const app = {
   day: null,
   lastLine: '',
   proof: [],
+  paused: false,
 };
 
 // ---- resume store ---------------------------------------------------------
@@ -176,7 +182,10 @@ function apply() {
   app.hints = 0;
   app.route = rt;
   app.proof = [];
+  app.paused = false;
+  if (view) view.reset();
   app.game = createGame(app.lot);
+  view.setGame(app.game);
   // reload-and-resume: same route, same lot ⇒ replay the lit batches. ask() re-derives the
   // answer through the deterministic adversary, so the resumed weight vector is identical.
   const saved = resume.read();
@@ -236,10 +245,10 @@ function render(line) {
   el.legendk.textContent = String(lot.k);
   // Deliberately NOT disabled while nothing is lit: an empty question is LEGAL (it costs the
   // responder a lie if it lies), so the rule lives in game.ask() and not in the button.
-  el.ask.disabled = !canAsk(g);
-  el.clear.disabled = !g.draft.length;
-  el.undo.disabled = !g.log.length;
-  el.hint.disabled = !canAsk(g);
+  el.ask.disabled = app.paused || !canAsk(g);
+  el.clear.disabled = app.paused || !g.draft.length;
+  el.undo.disabled = app.paused || !g.log.length;
+  el.hint.disabled = app.paused || !canAsk(g);
   el.prooffoot.innerHTML = g.phase === 'accuse'
     ? '<span class="warn">问完了或只剩一个候选：点一个格子指认。</span>'
     : `权重向量 <code>${formatState(gameState(g))}</code>：第 i 格 = 已被矛盾 i 次的候选数。`;
@@ -355,6 +364,7 @@ function illegalReason(r) {
 
 function commit() {
   const g = app.game;
+  if (app.paused) { render('<span class="warn">已暂停</span> —— 按 P 或"暂停"继续。'); return; }
   const ids = g.draft.slice();
   const r = ask(g);
   if (!r.ok) {
@@ -362,11 +372,12 @@ function commit() {
     view.setGame(g);
     return;
   }
+  sound.play(r.answer === 'yes' ? 'askYes' : 'askNo');
   app.proof.push(proofLine(g, g.log.length, ids, r));
   resume.write(location.hash || '#/c/1', g.id, g.log.map((e) => e.ids));
   drawProof();
   const bumped = bumpedCells(g);
-  view.setGame(g, REDUCED ? [] : bumped);
+  view.setGame(g, REDUCED_MOTION ? [] : bumped);
   const a = gameState(g);
   render(`第 ${g.log.length} 问：答“${r.answer === 'yes' ? '在' : '不在'}” · 候选 ${total(a)} · `
     + `权重 <b>(${a.join('|')})</b> · 还剩 ${r.qLeft} 问`);
@@ -399,6 +410,8 @@ function finish() {
   }
   resume.clear();
   markLies(rv.lies);
+  if (rv.trueLies > 0) sound.play('lie');
+  sound.play(g.won ? 'win' : 'lose');
   el.stars.textContent = '★'.repeat(gr.stars) + '☆'.repeat(3 - gr.stars);
   el.verdict.textContent = gr.label;
   el.tally.innerHTML = (g.won
@@ -415,18 +428,31 @@ function finish() {
 
 function restart() {
   const g = app.game;
+  const before = { asked: g.log.length, draft: g.draft.length, hints: app.hints, proof: app.proof.length,
+                   anim: view.anim().simSteps, clock: view.anim().clockMs, paused: app.paused };
   reset(g);
   app.hints = 0;
   app.proof = [];
+  app.paused = false;
   resume.clear();
   el.veil.hidden = true;
+  el.helpVeil.hidden = true;
+  view.reset();                 // 时钟、累加器、步号、金闪、按压态一起归零
+  view.setPaused(false);
   drawProof();
   view.setGame(g);
-  render(`重开 · ${g.n} 个候选 · ${g.k} 个谎 · 精确值 ${g.par === null ? '未量' : `${g.par} 问`} · 界说 ${app.lot.bound}`);
+  syncPauseUi();
+  sound.play('ui');
+  const after = view.anim();
+  render(`重开 · ${g.n} 个候选 · ${g.k} 个谎 · 精确值 ${g.par === null ? '未量' : `${g.par} 问`} · 界说 ${app.lot.bound} · `
+    + `<span class="warn">复位</span> 问数 ${before.asked}→${g.log.length} · 亮格 ${before.draft}→${g.draft.length} · `
+    + `提示 ${before.hints}→${app.hints} · 仿真步 ${before.anim}→${after.simSteps} · 时钟 ${Math.round(before.clock)}→${Math.round(after.clockMs)}ms · `
+    + `暂停 ${before.paused ? '是' : '否'}→否`);
 }
 
 function doHint() {
   const g = app.game;
+  if (app.paused) { render('<span class="warn">已暂停</span> —— 先按 P 继续。'); return; }
   const h = hint(g);
   if (!h) { render('<span class="warn">现在该指认，不是问。</span>'); return; }
   app.hints++;
@@ -459,13 +485,97 @@ function shareLink() {
   }
 }
 
+// ---- 暂停 / 静音 / 全屏 / 教学 ------------------------------------------------
+// 暂停的判据不是"遮罩有没有盖上去"，而是仿真时钟停没停：view.setPaused(true) 之后
+// advance() 直接 return，animClock / simSteps 不再前进（js/view.js 的 dt 契约）。
+function syncPauseUi() {
+  const on = app.paused;
+  el.pause.setAttribute('aria-pressed', String(on));
+  el.pause.textContent = on ? '继续' : '暂停';
+  el.pause.title = on ? '接着这一局打（P / 空格）' : '暂停这一局（P / 空格）';
+  el.pauseTag.hidden = !on;
+}
+
+function setPaused(on) {
+  const g = app.game;
+  if (!g) return false;
+  const want = on === undefined ? !app.paused : !!on;
+  if (want && g.done) { render('这一局已经结案了，没有可暂停的仿真 —— 按"重开"再来一局。'); return false; }
+  app.paused = want;
+  view.setPaused(want);
+  if (want) sound.suspend();
+  else sound.resume();          // 静音态下 resume() 自己会拒绝，不会偷偷出声
+  syncPauseUi();
+  const a = view.anim();
+  render(want
+    ? `暂停 · 仿真时钟停在 ${Math.round(a.clockMs)}ms / ${a.simSteps} 步，恢复后从这里接着走`
+    : `继续 · 时钟仍读 ${Math.round(a.clockMs)}ms（暂停期间没有推进）`);
+  return app.paused;
+}
+
+function syncMuteUi() {
+  const m = sound.state().muted;
+  el.sound.setAttribute('aria-pressed', String(m));
+  el.sound.textContent = m ? '声音 关' : '声音 开';
+  el.sound.title = m ? '解除静音（M）' : '静音（M）：AudioContext 挂起，不新建任何振荡器';
+}
+
+function setMuted(on) {
+  const want = on === undefined ? !sound.state().muted : !!on;
+  sound.setMuted(want);
+  settings.setMuted(want);      // 偏好落盘：下一次打开还是静音
+  syncMuteUi();
+  toast(want ? '已静音 · AudioContext 挂起，静音期间不新建振荡器节点' : '已解除静音');
+  return sound.state().muted;
+}
+
+function fsElement() {
+  const d = document;
+  return d.fullscreenElement || d.webkitFullscreenElement || d.mozFullScreenElement || null;
+}
+
+function toggleFullscreen(on) {
+  const root = document.documentElement;
+  const want = on === undefined ? !fsElement() : !!on;
+  const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen;
+  const req = root.requestFullscreen || root.webkitRequestFullscreen || root.mozRequestFullScreen;
+  if (!req && !exit) { toast('这台设备不提供全屏'); return false; }
+  if (want && !fsElement()) {
+    if (!req) { toast('这台浏览器只允许手势进入全屏，用系统菜单'); return false; }
+    const p = req.call(root, { navigationUI: 'hide' });
+    if (p && p.catch) p.catch(() => toast('全屏被系统拒绝了'));
+  } else if (!want && fsElement() && exit) {
+    const p = exit.call(document);
+    if (p && p.catch) p.catch(() => {});
+  }
+  return !!fsElement();
+}
+
+function syncFullscreenUi() {
+  const on = !!fsElement();
+  el.fullscreen.setAttribute('aria-pressed', String(on));
+  el.fullscreen.textContent = on ? '退出全屏' : '全屏';
+  return on;
+}
+
+function toggleHelp(on) {
+  const want = on === undefined ? el.helpVeil.hidden : !!on;
+  el.helpVeil.hidden = !want;
+  el.help.setAttribute('aria-pressed', String(want));
+  if (want) settings.markTutored();
+  sound.play('ui');
+  return !el.helpVeil.hidden;
+}
+
 el.ask.addEventListener('click', commit);
 el.clear.addEventListener('click', () => {
+  if (app.paused) { render('<span class="warn">已暂停</span> —— 先按 P 继续。'); return; }
   clearDraft(app.game);
   view.setGame(app.game);
   render(`亮格清空了 · 候选还是 ${total(gameState(app.game))} 个`);
 });
 el.undo.addEventListener('click', () => {
+  if (app.paused) { render('<span class="warn">已暂停</span> —— 先按 P 继续。'); return; }
   if (undo(app.game)) {
     app.proof.pop();
     el.veil.hidden = true;
@@ -473,12 +583,21 @@ el.undo.addEventListener('click', () => {
     resume.write(location.hash || '#/c/1', app.game.id, app.game.log.map((e) => e.ids));
     view.setGame(app.game);
     const a = gameState(app.game);
+    sound.play('tap');
     render(`退回一问 · 候选 ${total(a)} · 权重 (${a.join('|')})`);
   }
 });
 el.hint.addEventListener('click', doHint);
 el.restart.addEventListener('click', restart);
 el.share.addEventListener('click', shareLink);
+el.pause.addEventListener('click', () => setPaused());
+el.sound.addEventListener('click', () => setMuted());
+el.fullscreen.addEventListener('click', () => { toggleFullscreen(); setTimeout(syncFullscreenUi, 0); });
+el.help.addEventListener('click', () => toggleHelp());
+el.helpClose.addEventListener('click', () => toggleHelp(false));
+el.helpVeil.addEventListener('click', (ev) => { if (ev.target === el.helpVeil) toggleHelp(false); });
+document.addEventListener('fullscreenchange', syncFullscreenUi);
+document.addEventListener('webkitfullscreenchange', syncFullscreenUi);
 el.again.addEventListener('click', restart);
 el.next.addEventListener('click', () => {
   const nl = nextLot(app.index - 1);
@@ -528,16 +647,36 @@ el.wipe.addEventListener('click', () => {
 
 window.addEventListener('hashchange', apply);
 window.addEventListener('resize', () => { if (!el.viewGame.hidden) view.measure(); });
+// 键盘覆盖：全局 M 静音 / F 全屏 / H 或 ? 教学；对局内 Enter 问出去、Space 或 P 暂停、
+// R 重开、U 撤销、G 提示、1..9 点格、Escape 关遮罩或清空亮格；关卡库内 Enter/Space 开局。
+// （提示从 H 挪到 G，是为了把 H 让给教学 —— 手机上键盘不是主路径，但键盘用户不该猜。）
 window.addEventListener('keydown', (ev) => {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const key = String(ev.key || '');
+  const k = key.toLowerCase();
+  if (key === ' ' && ev.target && ev.target.tagName === 'BUTTON') return;   // 空格是按钮的原生激活键
+  if (k === 'm') { setMuted(); ev.preventDefault(); return; }
+  if (k === 'f') { toggleFullscreen(); ev.preventDefault(); setTimeout(syncFullscreenUi, 0); return; }
+  if (key === '?' || k === 'h') { toggleHelp(); ev.preventDefault(); return; }
+  if (el.helpVeil.hidden === false) {
+    if (key === 'Escape') toggleHelp(false);
+    return;                                   // 教学遮罩开着时，其余按键一律不碰仿真
+  }
+  if (el.viewMenu.hidden === false) {
+    if (key === 'Enter' || key === ' ') { go(`#/c/${store.unlocked || 1}`); ev.preventDefault(); }
+    return;
+  }
   if (el.viewGame.hidden) return;
   const g = app.game;
   if (!g) return;
+  if (key === ' ' || k === 'p') { setPaused(); ev.preventDefault(); return; }
   if (g.done) {
-    if (ev.key === 'Escape') el.veil.hidden = true;
+    if (key === 'Escape') el.veil.hidden = true;
+    if (key === 'Enter') restart();
     return;
   }
-  if (ev.key === 'Escape') {
+  if (key === 'Escape') {
+    if (app.paused) { setPaused(false); return; }
     if (g.draft.length) {
       clearDraft(g);
       view.setGame(g);
@@ -545,18 +684,21 @@ window.addEventListener('keydown', (ev) => {
     }
     return;
   }
-  if (ev.key === 'Enter') { el.ask.click(); ev.preventDefault(); return; }
-  if (ev.key.toLowerCase() === 'u') { el.undo.click(); return; }
-  if (ev.key.toLowerCase() === 'h') { el.hint.click(); return; }
-  if (ev.key.toLowerCase() === 'r') { el.restart.click(); return; }
-  const d = Number(ev.key);
+  if (app.paused) { render('<span class="warn">已暂停</span> —— 按 P 或空格继续。'); return; }
+  if (key === 'Enter') { el.ask.click(); ev.preventDefault(); return; }
+  if (k === 'u') { el.undo.click(); return; }
+  if (k === 'g') { el.hint.click(); return; }
+  if (k === 'r') { el.restart.click(); return; }
+  const d = Number(key);
   if (Number.isInteger(d) && d >= 1 && d <= Math.min(9, g.n)) tapCell(d);
 });
 
 view = createView(el.canvas, {
+  reducedMotion: REDUCED_MOTION,
   onToggle: (id) => tapCell(id),
   onBrush: (ids, added) => {
     const g = app.game;
+    if (app.paused) { render('<span class="warn">已暂停</span> —— 按 P 或空格继续。'); return; }
     if (g.phase === 'accuse') { render('<span class="warn">已经不能问了：点一个格子指认。</span>'); return; }
     if (added) paint(g, ids);
     else { for (const id of ids) if (g.draft.includes(id)) toggle(g, id); }
@@ -570,6 +712,7 @@ view = createView(el.canvas, {
 function tapCell(id) {
   const g = app.game;
   if (g.done) return false;
+  if (app.paused) { render('<span class="warn">已暂停</span> —— 按 P 或空格继续。'); return false; }
   if (g.phase === 'accuse' || total(gameState(g)) <= 1) {
     if (total(gameState(g)) <= 1 && g.phase === 'ask' && questionsLeft(g) > 0) {
       // Still has budget but only one survivor: the rules force the accusation, ask() would say
@@ -578,10 +721,12 @@ function tapCell(id) {
     }
     const res = accuseOf(g, id);
     if (!res.ok) { render(`<span class="warn">${illegalReason(res)}</span>`); return false; }
+    sound.play('lit');
     finish();
     return true;
   }
   if (!toggle(g, id)) return false;
+  sound.play('tap');
   view.setGame(g);
   render(`亮 ${g.draft.length} 格 {${g.draft.join(',')}} · 按“问出去”`);
   return true;
@@ -644,6 +789,16 @@ function stateSnapshot() {
     resume: !!resume.read(),
     maxCells: MAX_CELLS,
     searchNodes: solver.nodes,
+    paused: app.paused,
+    help: !el.helpVeil.hidden,
+    muted: sound.state().muted,
+    volume: sound.state().volume,
+    sound: sound.state(),
+    anim: view.anim(),
+    fullscreen: !!fsElement(),
+    reducedMotion: REDUCED_MOTION,
+    settingsKey: SETTINGS_KEY,
+    settingsPersisted: CAN_PERSIST,
   };
 }
 
@@ -791,8 +946,25 @@ window.ulam = {
   searchNodes: () => solver.nodes,
   idsForProfile: (y) => idsForProfile(app.game, y),
   store,
+  settings,
+  sound: () => sound.state(),
+  // HUD 的三个开关：走的是手指能到达的同一批 handler，不是平行实现
+  tapPause: (on) => setPaused(on),
+  tapMute: (on) => setMuted(on),
+  tapFullscreen: (on) => { const r = toggleFullscreen(on); syncFullscreenUi(); return r; },
+  tapHelp: (on) => toggleHelp(on),
+  // 帧率对拍入口：读画布仿真的唯一一份时钟（暂停期间不涨）
+  anim: () => view.anim(),
+  resetAnim: () => { view.reset(); return view.anim(); },
   els: el,
 };
+
+// 静音偏好是设备级的：启动就把设置档里的读数回灌给音频与 HUD，而不是每局重新问一遍。
+sound.setVolume(settings.volume);
+if (settings.muted) sound.setMuted(true);
+syncMuteUi();
+syncPauseUi();
+syncFullscreenUi();
 
 // No rAF loop of its own: the view flashes the bumped cells and then stops. The shell drives the
 // first measure explicitly so the board is drawn before any test probes a point on it.
