@@ -5,11 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0d1319">
 <meta name="description" content="谎话藏数 ULAM：一个数藏在 1..n 里，你最多问 q 个子集问题，对方最多撒 k 个谎。屏幕上并排印着 Berlekamp 体积界的预测与极小极大 DP 量出的真值——教科书说 4 问必中的那一格，真值是 5 问。">
-<!-- Inline data-URI favicon: a Pages deploy has no /favicon.ico, and the 404 it produces is
-     counted as a console error by tools/verify.sh. -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1319'/%3E%3Crect x='4' y='4' width='10' height='10' rx='2' fill='%233ddad7'/%3E%3Crect x='18' y='4' width='10' height='10' rx='2' fill='%23223440'/%3E%3Crect x='4' y='18' width='10' height='10' rx='2' fill='%23223440'/%3E%3Crect x='18' y='18' width='10' height='10' rx='2' fill='%23f0b544'/%3E%3C/svg%3E">
+<!-- 图标全部是盘上的真位图（assets/gen/gen_art.py 产，file + PNG IHDR 实测过宽高），
+     不再是内联 data-URI SVG：那张 32px 的 SVG 既装不上桌面，也上不了商店截图。
+     favicon.ico 放在文档根：每个浏览器都会自己去要它，404 会被 tools/verify.sh 记成 console error。 -->
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="assets/icons/favicon-48.png">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="谎话藏数">
+<meta property="og:type" content="website">
+<meta property="og:title" content="谎话藏数 · ULAM">
+<meta property="og:description" content="界会说谎，DP 不会：一个把 Berlekamp 体积界与极小极大真值并排印在屏幕上的说谎者搜数游戏。">
+<meta property="og:image" content="assets/art/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="assets/art/og-card.png">
 <title>谎话藏数 · ULAM</title>
 <link rel="stylesheet" href="css/game.css">
+<script>
+// 可安装的那一半：service worker 注册。三条实测约束钉在这里——
+//   1) file:// 下不注册（SW 在 file: 上必然 reject，抛出来的未捕获异常会脏了 console 闸门）；
+//   2) 路径按 document.baseURI 解析，因为 Pages 把仓挂在 /<repo>/ 前缀下，绝对路径会 404；
+//   3) 注册失败静默降级：不能安装不等于不能玩。
+(() => {
+  if (location.protocol === 'file:' || !('serviceWorker' in navigator)) return;
+  window.addEventListener('load', () => {
+    try {
+      navigator.serviceWorker.register(new URL('sw.js', document.baseURI).href, { scope: './' })
+        .catch(() => { /* 离线能力是附加物 */ });
+    } catch (err) { /* 老浏览器没有 new URL(src, base) */ }
+  });
+})();
+</script>
 </head>
 <body>
 
@@ -20,6 +52,14 @@
     <button type="button" data-mode="daily">每日</button>
     <button type="button" data-mode="random">随机</button>
   </nav>
+  <!-- HUD：四个开关都绑在真实存在的 id 上（js/main.js 的 el 表逐一对应），
+       命中区 ≥44px 由 css/game.css 的 .hud button 保证。 -->
+  <div class="hud" id="hud" role="group" aria-label="对局开关">
+    <button type="button" id="pause" class="hud-btn" aria-pressed="false" aria-keyshortcuts="P Space" title="暂停这一局（P / 空格）">暂停</button>
+    <button type="button" id="sound" class="hud-btn" aria-pressed="false" aria-keyshortcuts="M" title="静音（M）：挂起 AudioContext，静音期间不新建振荡器">声音 开</button>
+    <button type="button" id="fullscreen" class="hud-btn" aria-pressed="false" aria-keyshortcuts="F" title="全屏（F）">全屏</button>
+    <button type="button" id="help" class="hud-btn" aria-pressed="false" aria-keyshortcuts="H ?" title="玩法与快捷键（H / ?）">玩法</button>
+  </div>
   <p class="totals" id="totals"></p>
 </header>
 
@@ -59,6 +99,7 @@
 <section id="view-game" class="stage">
   <div class="board">
     <canvas id="board" aria-label="藏数盘"></canvas>
+    <p class="pause-tag" id="pause-tag" hidden>已暂停 · 按 P 或空格继续</p>
     <p class="hint-line" id="hintline"></p>
     <div class="veil" id="veil" hidden>
       <div class="veil-card">
@@ -70,6 +111,30 @@
           <button type="button" id="again">再来一次</button>
           <button type="button" id="next" class="primary">下一关</button>
           <button type="button" id="library">关卡库</button>
+        </div>
+      </div>
+    </div>
+    <div class="veil help" id="helpveil" hidden>
+      <div class="veil-card">
+        <h2>玩法 · 三句话</h2>
+        <ol class="help-rules">
+          <li>一个数藏在 <code>1..n</code>，对手知道它是几，并且最多撒 <code>k</code> 次谎。</li>
+          <li>每一问 = 刷亮一批格子后问“秘密在亮着的格子里吗？”（亮空集、亮全集都合法）。</li>
+          <li>问完必须<b>点一格指认</b>，指对才算赢。格子的底色 = 它被反驳了几次。</li>
+          <li>面板上并排印的两个数：<b class="b">体积界</b>是教科书的预言，<b class="p">精确值</b>是 DP 的量尺；不相等的格子才是难度所在。</li>
+        </ol>
+        <table class="keys">
+          <caption>键盘</caption>
+          <tbody>
+            <tr><th>Enter</th><td>问出去 / 结案后重开</td><th>Space · P</th><td>暂停 / 继续</td></tr>
+            <tr><th>1…9</th><td>点亮或指认那一格</td><th>U</th><td>退回一问</td></tr>
+            <tr><th>G</th><td>提示（走策略表）</td><th>R</th><td>重开本关</td></tr>
+            <tr><th>M</th><td>静音</td><th>F</th><td>全屏</td></tr>
+            <tr><th>H · ?</th><td>开合这页</td><th>Esc</th><td>关遮罩 / 清空亮格</td></tr>
+          </tbody>
+        </table>
+        <div class="veil-actions">
+          <button type="button" id="help-close" class="primary">开始玩</button>
         </div>
       </div>
     </div>

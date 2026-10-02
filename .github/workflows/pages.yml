@@ -28,8 +28,11 @@ jobs:
       - name: Assemble static site
         run: |
           mkdir _site
-          cp index.html _site/
+          cp index.html manifest.webmanifest sw.js favicon.ico _site/
           cp -r css js _site/
+          # assets/gen/ stays out: that's the generator, not something a page requests.
+          mkdir -p _site/assets
+          cp -r assets/icons assets/art _site/assets/
       - name: The artifact is self-contained
         run: |
           test -f _site/index.html
@@ -37,11 +40,51 @@ jobs:
           test -f _site/js/view.js
           test -f _site/js/data/lots.js
           test -f _site/js/core/storage.js
+          test -f _site/js/core/sound.js
           test -f _site/css/game.css
+          test -f _site/manifest.webmanifest
+          test -f _site/sw.js
+          test -f _site/favicon.ico
+          test -f _site/assets/icons/icon-512.png
+          test -f _site/assets/icons/apple-touch-icon.png
+          test -f _site/assets/art/board-grain.png
+          test -f _site/assets/art/og-card.png
           test ! -e _site/server.cjs
           test ! -e _site/tools
           test ! -e _site/electron
+          test ! -e _site/assets/gen
           grep -q '<canvas' _site/index.html
+          grep -q 'rel="manifest"' _site/index.html
+          grep -q 'apple-touch-icon' _site/index.html
+          # 一个可安装的 shell 不能指向 0 字节的假图：manifest 里写的 sizes 必须和 PNG 的 IHDR
+          # 真宽高对上，否则 Chrome 会在安装检查里退回"无图标"，而 CI 一路绿灯。
+          python3 - <<'PY'
+          import json, re, struct, sys, os
+          man = json.load(open('_site/manifest.webmanifest'))
+          icons = man.get('icons') or []
+          big = 0
+          for ic in icons:
+              p = os.path.join('_site', ic['src'])
+              if not os.path.exists(p):
+                  sys.exit(f'missing icon {p}')
+              if os.path.getsize(p) == 0:
+                  sys.exit(f'0-byte icon {p}')
+              with open(p, 'rb') as fh:
+                  head = fh.read(24)
+              if head[:8] != b'\x89PNG\r\n\x1a\n' or head[12:16] != b'IHDR':
+                  sys.exit(f'{p} is not a PNG (SVG pretending to be one)')
+              w, h = struct.unpack('>II', head[16:24])
+              declared = re.findall(r'(\d+)x(\d+)', ic['sizes'])
+              if not declared or (int(declared[0][0]), int(declared[0][1])) != (w, h):
+                  sys.exit(f'{p}: manifest says {ic["sizes"]}, IHDR says {w}x{h}')
+              if w >= 180:
+                  big += 1
+          if len(icons) < 4 or big < 3:
+              sys.exit(f'need 4 icons with 3 of them >=180px, got {len(icons)}/{big}')
+          print(f'manifest ok: {len(icons)} icons, {big} >=180px')
+          PY
+          # 纹理不是装饰：view.js 里写死的那个文件名必须在产物里，否则板子只有底色。
+          grep -q 'assets/art/board-grain.png' _site/js/view.js
           # Every byte the page reaches for must be inside the artifact: the shell imports its
           # modules with relative specifiers, so one missing file is a blank board at 3am on a
           # phone, and one bare/npm specifier would mean this repo is not zero-dependency after all.
@@ -59,8 +102,10 @@ jobs:
           }
           process.exit(bad);
           '
-          # No remote assets of any kind: the favicon is an inline data: SVG and the board is drawn.
-          ! grep -rhoE "https?://[^\"'\'' )]+" _site/js _site/css _site/index.html | grep -v "1999/xhtml\|w3.org" | grep -q .
+          # No remote assets of any kind: every icon, texture and the og-card are copied above, so
+          # the site works offline and never breaks when someone else's CDN does. og:image is
+          # deliberately a RELATIVE path for the same reason (and because Pages serves /<repo>/).
+          ! grep -rhoE "https?://[^\"'\'' )]+" _site/js _site/css _site/index.html _site/manifest.webmanifest _site/sw.js | grep -v "1999/xhtml\|w3.org" | grep -q .
       # The artifact has a fixed name (`github-pages`) that deploy-pages@v4 looks up by name in
       # this same run — assemble-and-stop leaves the deploy job with 0 artifacts to find.
       - uses: actions/configure-pages@v5

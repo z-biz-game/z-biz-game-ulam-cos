@@ -45,7 +45,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 code { color: var(--ulam-accent); font-size: 0.94em; }
 [hidden] { display: none !important; }
 
-.topbar { display: flex; align-items: center; gap: 16px; padding: 11px 18px; border-bottom: 1px solid var(--ulam-line); }
+.topbar { display: flex; align-items: center; gap: 16px; padding: calc(11px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) 11px calc(18px + env(safe-area-inset-left)); border-bottom: 1px solid var(--ulam-line); }
 .brand { font-size: 16px; letter-spacing: 0.06em; display: flex; align-items: baseline; gap: 8px; font-weight: 600; }
 .brand small { color: var(--ulam-ink-dim); font-size: 10px; letter-spacing: 0.3em; }
 .brand-mark { color: var(--ulam-lit); font-size: 15px; padding: 2px 4px; }
@@ -54,12 +54,12 @@ code { color: var(--ulam-accent); font-size: 0.94em; }
 .modes button { padding: 6px 13px; font-size: 13px; color: var(--ulam-ink-dim); border: 1px solid transparent; border-radius: 7px; }
 .modes button:hover { color: var(--ulam-ink); background: rgba(255, 255, 255, 0.04); }
 .modes button[aria-current="true"] { color: var(--ulam-lit); border-color: rgba(61, 218, 215, 0.4); background: rgba(61, 218, 215, 0.08); }
-.totals { margin-left: auto; font-size: 12px; color: var(--ulam-ink-dim); }
+.totals { font-size: 12px; color: var(--ulam-ink-dim); }
 .totals b { color: var(--ulam-accent); font-weight: 600; }
 .totals .warn { color: var(--ulam-bad); }
 
 /* ============================ 关卡库 ============================ */
-.menu { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; padding: 16px 18px; height: calc(100% - 52px); overflow: auto; align-content: start; }
+.menu { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; padding: calc(16px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left)); height: calc(100% - 52px - env(safe-area-inset-top)); overflow: auto; align-content: start; }
 .card { border: 1px solid var(--ulam-line); border-radius: var(--radius); background: var(--ulam-panel); padding: 14px 16px; }
 .card h2 { font-size: 12px; letter-spacing: 0.16em; color: var(--ulam-ink-dim); font-weight: 600; margin-bottom: 10px; }
 .card h2 small { letter-spacing: 0.02em; text-transform: none; }
@@ -88,7 +88,7 @@ code { color: var(--ulam-accent); font-size: 0.94em; }
 .legend-note { margin-top: 10px; font-size: 11px; color: var(--ulam-ink-dim); line-height: 1.7; }
 
 /* ============================= 对局 ============================= */
-.stage { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 18px; padding: 16px 18px; height: calc(100% - 52px); }
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 18px; padding: calc(16px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left)); height: calc(100% - 52px - env(safe-area-inset-top)); }
 .board { position: relative; display: grid; grid-template-rows: 1fr auto; min-height: 0; }
 #board { width: 100%; height: 100%; min-height: 0; display: block; touch-action: manipulation; }
 .hint-line { min-height: 20px; font-size: 12px; color: var(--ulam-ink-dim); text-align: center; line-height: 1.6; }
@@ -157,7 +157,7 @@ code { color: var(--ulam-accent); font-size: 0.94em; }
 .veil-actions button { flex: 1; padding: 9px; font-size: 12.5px; border: 1px solid var(--ulam-line); border-radius: 9px; }
 .veil-actions .primary { border-color: rgba(61, 218, 215, 0.6); color: var(--ulam-lit); background: rgba(61, 218, 215, 0.1); }
 
-.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 9px 16px; border: 1px solid var(--ulam-line); border-radius: 999px; background: var(--ulam-bg-2); font-size: 12px; color: var(--ulam-lit); z-index: 20; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); padding: 9px 16px; border: 1px solid var(--ulam-line); border-radius: 999px; background: var(--ulam-bg-2); font-size: 12px; color: var(--ulam-lit); z-index: 20; }
 .toast[hidden] { display: none; }
 
 @media (max-width: 860px) {
@@ -171,9 +171,44 @@ code { color: var(--ulam-accent); font-size: 0.94em; }
   .panel { padding: 12px; }
 }
 
+/* ============================== HUD ============================== */
+/* 命中区下限 44px（Apple HIG / WCAG 2.5.5 的那条线）：顶栏四个开关、模式键、对局的六个动作键、
+   结案的三枚键、关卡库的"开局"键全部吃这条规则。画布侧的对应物在 js/view.js：格子被挤小时
+   命中框向外借到 HIT_MIN=44，取中心最近的一格。 */
+.hud { display: flex; gap: 6px; margin-left: auto; }
+.hud-btn { min-height: 44px; min-width: 44px; padding: 0 12px; font-size: 12.5px; border: 1px solid var(--ulam-line); border-radius: 9px; background: rgba(255, 255, 255, 0.03); color: var(--ulam-ink-dim); font-variant-numeric: tabular-nums; }
+.hud-btn:hover { color: var(--ulam-ink); border-color: rgba(61, 218, 215, 0.5); }
+.hud-btn[aria-pressed="true"] { color: var(--ulam-accent); border-color: rgba(240, 181, 68, 0.6); background: rgba(240, 181, 68, 0.1); }
+#pause[aria-pressed="true"] { color: var(--ulam-lit); border-color: rgba(61, 218, 215, 0.6); background: rgba(61, 218, 215, 0.1); }
+.modes button { min-height: 44px; }
+.controls button { min-height: 44px; }
+.veil-actions button { min-height: 44px; }
+.resume button, .bands button { min-height: 44px; }
+.lot-row button { min-height: 44px; min-width: 64px; }
+.about #wipe { min-height: 44px; }
+
+/* 暂停角标：绝对定位浮在盘上，不进 .board 的 grid 行（否则会把画布挤掉一行） */
+.pause-tag { position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); padding: 7px 14px; font-size: 12px; letter-spacing: 0.08em; color: var(--ulam-lit); border: 1px solid rgba(61, 218, 215, 0.5); border-radius: 999px; background: rgba(13, 19, 25, 0.88); pointer-events: none; z-index: 5; }
+
+/* 教学遮罩 */
+.veil.help { z-index: 12; }
+.veil.help .veil-card { width: min(460px, 92%); text-align: left; }
+.veil.help .veil-card h2 { text-align: center; }
+.help-rules { list-style: decimal inside; display: grid; gap: 6px; font-size: 12px; line-height: 1.75; color: var(--ulam-ink-dim); margin-top: 8px; }
+.help-rules b { color: var(--ulam-ink); }
+.help-rules .b { color: var(--ulam-ink-dim); border-bottom: 1px dotted; }
+.help-rules .p { color: var(--ulam-accent); }
+.keys { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 11px; color: var(--ulam-ink-dim); }
+.keys caption { text-align: left; font-size: 10px; letter-spacing: 0.16em; color: var(--ulam-ink-dim); padding-bottom: 6px; }
+.keys th { text-align: left; color: var(--ulam-lit); font-weight: 600; white-space: nowrap; padding: 3px 8px 3px 0; font-variant-numeric: tabular-nums; }
+.keys td { padding: 3px 8px 3px 0; }
+
 /* The heat scale is the information; the gold flash on a bumped cell is not. With motion off the
    flash map stays empty (main.js drops the ids) and nothing animates but the state itself. */
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
   .veil { animation: none; }
+  .hud-btn, .pause-tag { transition: none; }
+  /* 画布侧的对应分支在 js/view.js：REDUCED_MOTION 为真时 motionOff 关掉亮框呼吸与金闪，
+     needsFrame() 直接返回 false ⇒ 一帧都不再排，盘退成静图。 */
 }
