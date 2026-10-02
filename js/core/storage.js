@@ -46,19 +46,77 @@ function blank() {
 
 let cache = null;
 
+// ---- 两段式解码 -------------------------------------------------------------
+// 第一段：`JSON.parse`。这一段的坏输入（垃圾串、`null`、数组）只能整体退回空档 —— 因为连
+// "有哪些记录"都读不出来，没有更细的粒度可言。
+// 第二段：**逐条**。一条记录长歪了（`null`、缺字段、类型错、越界值）只丢那一条，其余照旧。
+// 上一版把整档 `Object.assign(blank(), parsed)` 似地整体接受，于是手改过的
+// `{"records":{"1-1":null}}` 会让 renderMenu() 在 `r.best` 上抛 TypeError，整局冻死。
+// test/storage.test.mjs 用四条垃圾样本钉住这条边界。
+function flag(v) {
+  return !!v;
+}
+
+export function decodeRecord(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const best = Number(v.best);
+  const plays = count(v.plays);
+  const rec = {
+    solved: flag(v.solved),
+    best: Number.isFinite(best) && best >= 0 && best <= 1e6 ? Math.floor(best) : null,
+    plays,
+    atPar: flag(v.atPar),
+  };
+  // 一条记录至少要说得出"打过没有"：plays=0 且没有 best 又没 solved 的是空壳，丢掉。
+  if (!rec.plays && rec.best === null && !rec.solved) return null;
+  if (!rec.solved && rec.best !== null) rec.solved = true; // 有成绩就是拿下过
+  return rec;
+}
+
+function decodeDaily(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const q = Number(v.questions);
+  return {
+    id: typeof v.id === 'string' ? v.id : '',
+    done: flag(v.done),
+    questions: Number.isFinite(q) && q >= 0 && q <= 1e6 ? Math.floor(q) : 0,
+    at: Number.isFinite(Number(v.at)) ? Number(v.at) : 0,
+  };
+}
+
+// 第二段丢掉的条数：外壳用它回答"存档里有没有被人手改坏的东西"，测试用它证明"确实丢了、而不是
+// 根本没读到"。累加而不是覆盖，因为 records 与 daily 各丢各的。
+let corruptDropped = 0;
+export function corruptCount() {
+  return corruptDropped;
+}
+
+function decodeMap(raw, decode) {
+  const out = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  let dropped = 0;
+  for (const [k, v] of Object.entries(raw)) {
+    const good = decode(v);
+    if (good) out[k] = good; else dropped++;
+  }
+  corruptDropped += dropped;
+  return out;
+}
+
 function load() {
   if (cache) return cache;
+  corruptDropped = 0;
   const ls = backend();
   const raw = ls ? ls.getItem(KEY) : null;
   if (raw) {
     try {
       const p = JSON.parse(raw);
-      if (p && typeof p === 'object') {
+      if (p && typeof p === 'object' && !Array.isArray(p)) {
         const base = blank();
         const s = (p.stats && typeof p.stats === 'object') ? p.stats : {};
         cache = {
-          records: p.records && typeof p.records === 'object' ? p.records : base.records,
-          daily: p.daily && typeof p.daily === 'object' ? p.daily : base.daily,
+          records: decodeMap(p.records, decodeRecord),
+          daily: decodeMap(p.daily, decodeDaily),
           unlocked: count(p.unlocked) || base.unlocked,
           stats: {
             plays: count(s.plays),
@@ -196,3 +254,98 @@ export function persistent() {
     return false;
   }
 }
+
+// ---- 设置档 ---------------------------------------------------------------
+// 第二个 localStorage 键。成绩档回答"打过什么"，这一档回答"这台设备上的偏好"：静音、音量、
+// 教学看过没有。它和成绩档分开，是因为清空成绩不该把玩家的静音偏好一起抹掉。
+//
+// 读写都显式落在 `window.localStorage.getItem/setItem` 上（不是只经由 backend() 的间接调用）：
+// 一个只 setItem 不 getItem 的存档在重启后即丢失，而"读回来了没有"必须是能被 grep、也能被
+// test/storage.test.mjs 实测的东西。
+export const SETTINGS_KEY = 'ulam.settings.v1';
+
+const SETTINGS_DEFAULTS = { muted: false, volume: 0.7, tutored: false };
+
+let settingsCache = null;
+
+function decodeSettings(raw) {
+  const out = { ...SETTINGS_DEFAULTS };
+  let p = null;
+  try {
+    p = JSON.parse(raw);
+  } catch (err) {
+    return { values: out, corrupt: true };      // 第一段坏了：整档退回默认值，但游戏照开
+  }
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return { values: out, corrupt: true };
+  let fieldsCorrupt = 0;
+  // 第二段：逐字段。`muted` 是垃圾只丢 `muted`，音量仍然读得回来。
+  if (typeof p.muted === 'boolean') out.muted = p.muted; else fieldsCorrupt++;
+  const v = Number(p.volume);
+  if (Number.isFinite(v) && v >= 0 && v <= 1) out.volume = v; else fieldsCorrupt++;
+  if (typeof p.tutored === 'boolean') out.tutored = p.tutored; else fieldsCorrupt++;
+  return { values: out, corrupt: fieldsCorrupt > 0 };
+}
+
+function loadSettings() {
+  if (settingsCache) return settingsCache;
+  let raw = null;
+  try {
+    raw = typeof window !== 'undefined' && window.localStorage
+      ? window.localStorage.getItem(SETTINGS_KEY) : null;
+  } catch (err) {
+    raw = null;                                  // 被拒绝的存储：内存档
+  }
+  if (raw === null) {
+    settingsCache = { ...SETTINGS_DEFAULTS, corrupt: false };
+    return settingsCache;
+  }
+  const decoded = decodeSettings(raw);
+  settingsCache = { ...decoded.values, corrupt: decoded.corrupt };
+  return settingsCache;
+}
+
+function persistSettings() {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+    const { muted, volume, tutored } = settingsCache;
+    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify({ muted, volume, tutored }));
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+export const settings = {
+  get muted() { return loadSettings().muted; },
+  setMuted(on) {
+    loadSettings().muted = !!on;
+    persistSettings();
+    return loadSettings().muted;
+  },
+  get volume() { return loadSettings().volume; },
+  setVolume(v) {
+    const n = Number(v);
+    loadSettings().volume = Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : loadSettings().volume;
+    persistSettings();
+    return loadSettings().volume;
+  },
+  get tutored() { return loadSettings().tutored; },
+  markTutored() {
+    loadSettings().tutored = true;
+    persistSettings();
+    return true;
+  },
+  all() {
+    const s = loadSettings();
+    return { muted: s.muted, volume: s.volume, tutored: s.tutored, persisted: persistSettings() };
+  },
+  reset() {
+    settingsCache = { ...SETTINGS_DEFAULTS, corrupt: false };
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) window.localStorage.removeItem(SETTINGS_KEY);
+    } catch (err) { /* 本来就没落地 */ }
+    return true;
+  },
+  // 测试与"存档不可用"的表头文案用：坏设置档被降级过没有（降级 = 用默认值继续玩，不是抛）。
+  wasCorrupt() { return !!loadSettings().corrupt; },
+};

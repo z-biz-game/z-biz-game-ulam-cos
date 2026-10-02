@@ -8,11 +8,12 @@
 // 会在 `await import()` 上互相穿插，等模块真正求值时 `globalThis.window` 早就被别的测试换掉了，
 // 整间套件会读到一个共享后端（第一版就是这么写然后自己漏成一片的）。
 //
-// 押在这里的东西，全部从 storage.js 自己推出来，只有一条键、纯 JSON：
+// 押在这里的东西，全部从 storage.js 自己推出来，两条键（成绩档 + 设置档）、纯 JSON：
 //   * `best`（最少问几问拿下）只降不升，`unlocked`（战役前沿）只升不降，
 //   * `solved` 与 `atPar` 一旦为真就抹不掉，
 //   * 每日题按日历键存：同一天只认最好的那次，`at` 只是写进去的时间戳、从不参与判定，
-//   * 坏载荷一律降级成空白（顶层四键之外不清洗，健壮性靠 totals()/record() 自己的守卫），
+//   * 坏载荷两段式降级：第一段（JSON.parse + 顶层形状）坏 → 整档退空白；第二段坏 → 只丢那一条/
+//     那个字段，邻居照读；`corruptCount()` 与 `settings.wasCorrupt()` 让降级留下痕迹而不是静默，
 //   * `requireBackend()` 是**抛异常**而不是返回 null —— 「被拒绝」和「是空的」必须分得开。
 //
 // 两件事必须说清楚，因为它们是这个仓和兄弟仓不一样的地方：
@@ -304,19 +305,85 @@ test('storage: 半坏的载荷 —— unlocked 不是数字退回 1，stats 逐�
   eq(m.store.unlock(2), 2, '降级之后照样能往前写');
 });
 
-test('storage: records / daily 是原样透传的 —— 单条烂记录靠守卫降级，不靠清洗', () => {
+test('storage: 第二段解码 —— 一条烂记录只丢那一条，不连坐、也不原样透传', () => {
   const payload = {
-    records: { good: { solved: true, best: 3, plays: 2, atPar: true }, junk: 'garbage', half: {} },
+    records: {
+      good: { solved: true, best: 3, plays: 2, atPar: true },
+      junk: 'garbage',
+      half: {},
+      nul: null,
+      list: [1, 2],
+      wild: { solved: true, best: 1e12, plays: 'x' },
+    },
     daily: { '2026-05-01': { id: 'd', done: true, questions: 4 }, nope: 3 },
   };
   const m = use(fakeLS(new Map([[KEY, JSON.stringify(payload)]])));
   eq(m.store.record('good').best, 3, '一条坏的拖累不了好的');
-  eq(m.store.record('junk'), 'garbage', '这一层不逐个字段清洗（totals 才是守卫）');
-  eq(m.store.record('half'), {});
-  eq(m.store.totals(), { solved: 1, atPar: 1, plays: 0, wins: 0, losses: 0 }, 'totals 只数 r && r.solved，烂记录进不了账');
-  eq(m.store.dailyDone('nope'), 3, '不合格的日历键照样读得回来 —— 连击是调用方的事');
+  eq(m.store.record('junk'), null, '"garbage" 不是记录形状 —— 丢掉，而不是原样交给 renderMenu 去 .best');
+  eq(m.store.record('half'), null, '说不出任何事实的空壳不是记录');
+  eq(m.store.record('nul'), null);
+  eq(m.store.record('list'), null, '数组不是记录');
+  eq([m.store.record('wild').solved, m.store.record('wild').best], [true, null], '越界的 best 归 null，同一条里的 solved 仍然作数');
+  eq(m.corruptCount(), 5, 'records 丢 4 条 + daily 丢 1 条；wild 被修好而不是丢掉');
+  eq(m.store.dailyDone('2026-05-01').questions, 4, '同一天里的合格项照常读回');
+  eq(m.store.dailyDone('nope'), null, 'daily 同样逐条：数字不是日历项');
+  eq(m.store.totals(), { solved: 2, atPar: 1, plays: 0, wins: 0, losses: 0 }, 'good + wild 都是 solved');
   eq(m.solve('junk', { questions: 2, par: 2, hints: 0, lies: 0, won: true }).best, 2, '打一次就把那条烂记录覆盖掉');
-  eq(m.store.totals().solved, 2);
+  eq(m.store.totals().solved, 3);
+});
+
+test('storage: 第一段解码 —— 四种读不出的载荷整体退空档，且还能往前写', () => {
+  for (const raw of ['{', 'null', '[1,2,3]', '"a string"', '{"records":5,"daily":[]}']) {
+    const ls = fakeLS(new Map([[KEY, raw]]));
+    const m = use(ls);
+    eq(m.store.records, {}, `${raw} -> 空纪录`);
+    eq(m.store.totals().solved, 0);
+    eq(m.store.unlocked, 1, '前沿退回 1，不是 NaN 也不是 undefined');
+    eq(m.corruptCount(), 0, '第一段坏没有"逐条"可数：它丢的是整个档案，corruptCount 只说第二段');
+    eq(m.solve('x', { questions: 3, par: 4, hints: 1, lies: 0, won: true }).best, 3, '坏档之后照样能写新局');
+    eq(m.store.save(), true, '写路径不受坏档影响');
+    const reread = JSON.parse(ls.getItem(KEY));
+    eq(reread.records.x.best, 3, '落盘的是清洗过的形状');
+  }
+});
+
+test('storage: 设置档是第二个键 —— 逐字段解码，坏字段退默认值而不是抛', () => {
+  const SK = 'ulam.settings.v1';
+  const mk = (raw) => { const ls = fakeLS(new Map([[SK, raw]])); return [use(ls), ls]; };
+  const [a] = mk('{"muted":true,"volume":0.25,"tutored":true}');
+  eq([a.settings.muted, a.settings.volume, a.settings.tutored], [true, 0.25, true], '三个字段都读得回来');
+  eq(a.settings.wasCorrupt(), false);
+
+  const [b] = mk('{"muted":"yes please","volume":0.4,"tutored":1}');
+  eq(b.settings.muted, false, 'muted 不是布尔 -> 退默认，不抛');
+  eq(b.settings.tutored, false);
+  eq(b.settings.volume, 0.4, '同一个档里坏掉的字段不连坐好字段');
+  eq(b.settings.wasCorrupt(), true, '降级必须留下可查的痕迹');
+
+  const [c] = mk('{"volume":17}');
+  eq(c.settings.volume, 0.7, '越界音量退默认，而不是把 gain 设成 17');
+  const [d] = mk('{}');
+  eq(d.settings.volume, 0.7, '缺字段同样退默认');
+
+  const [e] = mk('nope');
+  eq([e.settings.muted, e.settings.volume, e.settings.wasCorrupt()], [false, 0.7, true], '第一段坏：整档默认值 + 痕迹');
+  const [f] = mk('[]');
+  eq(f.settings.wasCorrupt(), true, '数组不是设置档');
+
+  const [g, gls] = mk('{"muted":false}');
+  eq([g.settings.setMuted(true), g.settings.setVolume(2), g.settings.setVolume(-1)], [true, 1, 0], '写路径自己夹范围');
+  eq(g.settings.markTutored(), true);
+  const written = JSON.parse(gls.getItem(SK));
+  eq([written.muted, written.volume, written.tutored], [true, 0, true], '写下去的就是这三个键');
+  eq(Object.keys(written).sort(), ['muted', 'tutored', 'volume'], '不往设置档里塞第四个概念');
+  eq(g.settings.reset(), true);
+  eq(g.settings.muted, false, 'reset 之后回到默认');
+  eq(gls.getItem(SK), null, 'reset 把磁盘上那条也删掉');
+
+  const h = use('nols');
+  eq(h.settings.muted, false, '没有 localStorage：默认值，不抛');
+  eq(h.settings.setMuted(true), true, '内存档也能改，只是留不住');
+  eq(h.settings.all().persisted, false, 'all() 老实说没落地');
 });
 
 test('storage: 解构缺字段不抛；questions 缺席时 best 写成 undefined，落盘就没这个键', () => {
