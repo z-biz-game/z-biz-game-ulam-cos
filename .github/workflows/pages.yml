@@ -19,17 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # No bundler, no install, no build step: the game ships plain ES modules, so the site is a
-      # file copy. Only index.html + css/ + js/ are reachable from the page — keep the static
-      # server, the electron shell, the bake tool, the tests and the CI config out of the artifact.
-      # The whole baked policy table for all 14 campaign lots (every 谎话藏数 position the minimax DP
-      # solved at build time) ships inside js/data/lots.js like any other source file, so the browser
-      # never solves anything to print a verdict: a click costs a Map.get.
+      # 拷哪些不写在这里——写在 tools/assemble-site.sh，本地闸与 CI 调同一支脚本。
+      # 以前这里是手抄的三行 cp（index.html/css/js），于是页面后来引用的
+      # manifest.webmanifest、sw.js、icons/* 全都上不了线：线上 404，而 CI 一路绿，
+      # 因为没有任何一步加载过那份产物。服务器、台架、文档、node_modules 仍在 artifact 外面。
       - name: Assemble static site
-        run: |
-          mkdir _site
-          cp index.html _site/
-          cp -r css js _site/
+        run: bash tools/assemble-site.sh _site
+      - name: Deploy set gate (checks the very _site about to be uploaded)
+        run: node tools/deploy-set.mjs _site
       - name: The artifact is self-contained
         run: |
           test -f _site/index.html
