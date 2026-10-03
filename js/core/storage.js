@@ -11,6 +11,8 @@
 //   * `unlocked`（战役解锁到第几关）只升不降。
 
 const KEY = 'ulam.save.v1';
+// 存档格式版本号。写档带上、读档校验：将来改形状时旧档宁可整档丢弃，也不能被误读。
+export const SAVE_VERSION = 1;
 
 export const SAVE_KEY = KEY;
 
@@ -37,6 +39,7 @@ function count(v) {
 
 function blank() {
   return {
+    v: SAVE_VERSION,
     records: {},
     daily: {},
     unlocked: 1,
@@ -46,18 +49,50 @@ function blank() {
 
 let cache = null;
 
+// 数字字段的归一自带一份，不依赖仓里有没有 count() —— 少一层隐式耦合。
+function recordNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+// 存档两段式解码的第一段：整档 JSON 落到这里之后，**逐字段**归一。
+// 一条记录不是"能用/不能用"二选一 —— 类型错的字段自己退成默认值，整条照样留下。
+// 第二段（sanitizeRecords）在下面：它只丢掉归一后彻底没意义的记录，别的记录不受牵连。
+function sanitizeRecord(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  const out = {};
+  out.solved = !!r.solved;
+  out.best = r.best === null || r.best === undefined ? null : recordNum(r.best);
+  out.plays = recordNum(r.plays);
+  out.atPar = !!r.atPar;
+  return out;
+}
+
+// 逐条隔离：坏的那条丢掉，好的那些原样留下，绝不因为一条把整份存档作废。
+function sanitizeRecords(p) {
+  const out = {};
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return out;
+  for (const [id, rec] of Object.entries(p)) {
+    const clean = sanitizeRecord(rec);
+    if (clean) out[id] = clean;
+  }
+  return out;
+}
+
 function load() {
   if (cache) return cache;
   const ls = backend();
-  const raw = ls ? ls.getItem(KEY) : null;
+  const raw = ls ? window.localStorage.getItem(KEY) : null;
   if (raw) {
     try {
       const p = JSON.parse(raw);
-      if (p && typeof p === 'object') {
+      // 版本门：只认本仓写出去的版本。将来升 v2 时，旧档宁可整档丢弃也不能被误读成新档。
+      if (p && typeof p === 'object' && !Array.isArray(p)
+          && (p.v === undefined || p.v === SAVE_VERSION)) {
         const base = blank();
         const s = (p.stats && typeof p.stats === 'object') ? p.stats : {};
         cache = {
-          records: p.records && typeof p.records === 'object' ? p.records : base.records,
+          records: sanitizeRecords(p.records),
           daily: p.daily && typeof p.daily === 'object' ? p.daily : base.daily,
           unlocked: count(p.unlocked) || base.unlocked,
           stats: {
@@ -83,7 +118,7 @@ function persist() {
   const ls = backend();
   if (!ls) return false;
   try {
-    ls.setItem(KEY, JSON.stringify(cache));
+    window.localStorage.setItem(KEY, JSON.stringify(cache));
     return true;
   } catch (err) {
     return false;

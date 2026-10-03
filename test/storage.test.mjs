@@ -89,7 +89,8 @@ test('storage: 存档键名就一个字符串，顶层形状就四个键', () =>
   eq(m.store.save(), true, '读过一次再存就落得下去');
   eq([...ls._map.keys()], [KEY], '整个存档永远只有一个键');
   const parsed = JSON.parse(ls.getItem(KEY));
-  eq(Object.keys(parsed).sort(), ['daily', 'records', 'stats', 'unlocked']);
+  eq(Object.keys(parsed).sort(), ['daily', 'records', 'stats', 'unlocked', 'v']);
+  eq(parsed.v, 1, '存档自带格式版本号 v');
   eq(Object.keys(parsed.stats).sort(), ['hints', 'lies', 'losses', 'plays', 'questions', 'wins']);
   m.solve('7-1', { questions: 5, par: 5, hints: 1, lies: 1, won: true });
   eq(Object.keys(JSON.parse(ls.getItem(KEY)).records['7-1']).sort(), ['atPar', 'best', 'plays', 'solved'], '一条记录只有这四个字段');
@@ -304,15 +305,16 @@ test('storage: 半坏的载荷 —— unlocked 不是数字退回 1，stats 逐�
   eq(m.store.unlock(2), 2, '降级之后照样能往前写');
 });
 
-test('storage: records / daily 是原样透传的 —— 单条烂记录靠守卫降级，不靠清洗', () => {
+test('storage: records 逐条清洗 —— 烂的那条只丢自己，好的那条一点不受牵连', () => {
   const payload = {
     records: { good: { solved: true, best: 3, plays: 2, atPar: true }, junk: 'garbage', half: {} },
     daily: { '2026-05-01': { id: 'd', done: true, questions: 4 }, nope: 3 },
   };
   const m = use(fakeLS(new Map([[KEY, JSON.stringify(payload)]])));
   eq(m.store.record('good').best, 3, '一条坏的拖累不了好的');
-  eq(m.store.record('junk'), 'garbage', '这一层不逐个字段清洗（totals 才是守卫）');
-  eq(m.store.record('half'), {});
+  eq(m.store.record('junk'), null, '不是对象的记录直接丢掉，绝不原样透传成一条"记录"');
+  eq(m.store.record('half'), { solved: false, best: null, plays: 0, atPar: false },
+    '半条记录逐字段归一成默认，而不是让缺字段漏进业务代码');
   eq(m.store.totals(), { solved: 1, atPar: 1, plays: 0, wins: 0, losses: 0 }, 'totals 只数 r && r.solved，烂记录进不了账');
   eq(m.store.dailyDone('nope'), 3, '不合格的日历键照样读得回来 —— 连击是调用方的事');
   eq(m.solve('junk', { questions: 2, par: 2, hints: 0, lies: 0, won: true }).best, 2, '打一次就把那条烂记录覆盖掉');
