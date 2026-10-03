@@ -60,6 +60,12 @@ export function createView(canvas, { onToggle, onBrush } = {}) {
   let game = null;
   let geo = { cell: 40, gap: 8, cols: 1, rows: 1, ox: PAD, oy: PAD, ledger: 18, w: 320, h: 320 };
   let flash = new Map();     // id -> 0..1, 刚被推高一格的格子闪一下
+  let flashT0 = 0;           // performance.now() when the current flash was armed
+  // The flash used to advance 0.08 per FRAME, so it needed a fixed 12.5 frames: the same answer
+  // faded out in 417ms at 30Hz and 104ms at 120Hz. FLASH_MS is that same 60Hz look (12.5 frames
+  // * 16.67ms) written as a duration, and the tick below advances by real elapsed time.
+  const FLASH_MS = 208;
+  const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   let raf = 0;
   let press = null;          // { anchor, added, moved }
 
@@ -276,12 +282,20 @@ export function createView(canvas, { onToggle, onBrush } = {}) {
   function tick() {
     raf = 0;
     if (flash.size) {
-      const next = new Map();
-      for (const [id, v] of flash) {
-        const t = v + 0.08;
-        if (t < 1) next.set(id, t);
+      // The one line that still eats frame dt. Clamped to 50ms so a backgrounded tab (rAF stops
+      // firing) resumes the fade instead of ending it on the first frame back.
+      const now = nowMs();
+      const dt = flashT0 ? Math.min(0.05, (now - flashT0) / 1000) : 0;
+      flashT0 = now;
+      const k = (dt * 1000) / FLASH_MS;
+      if (k > 0) {
+        const next = new Map();
+        for (const [id, v] of flash) {
+          const t = v + k;
+          if (t < 1) next.set(id, t);
+        }
+        flash = next;
       }
-      flash = next;
     }
     draw();
     if (flash.size && !raf) raf = window.requestAnimationFrame(tick);
@@ -293,8 +307,10 @@ export function createView(canvas, { onToggle, onBrush } = {}) {
       game = g;
       if (was !== g && changed.length) {
         flash = new Map(changed.map((id) => [id, 0]));
+        flashT0 = 0;   // re-arm the fade clock with the flash
       } else if (was !== g) {
         flash = new Map();
+        flashT0 = 0;
       }
       if (flash.size && !raf) raf = window.requestAnimationFrame(tick);
       else draw();
