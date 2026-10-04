@@ -37,12 +37,12 @@ if lsof -nP -iTCP:"$WEB_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "web port :$WEB_PORT is already LISTENING — pick WEB_PORT." >&2
   exit 7
 fi
-ORPHANS=$(pgrep -fl "remote-debugging-port" 2>/dev/null | grep -v "$$" | wc -l | tr -d ' ')
+ORPHANS=$(ps -Ao command= | awk '/remote-debugging[-]port/ && !/--type=/' | wc -l | tr -d ' ')  # instances, not processes: helper argvs repeat the flag
 if [ "${ORPHANS}" != "0" ] && [ -z "${ALLOW_ORPHAN_CHROME:-}" ]; then
   echo "$ORPHANS headless Chrome(s) with a remote-debugging-port are already running on this" >&2
   echo "machine. One at a time is the rule; verify that they are yours, then set" >&2
   echo "ALLOW_ORPHAN_CHROME=1 CDP_PORT=<free port> to proceed." >&2
-  pgrep -fl remote-debugging-port >&2 || true
+  ps -Ao pid=,etime=,command= | awk '/remote-debugging[-]port/ && !/--type=/' >&2 || true
   exit 8
 fi
 

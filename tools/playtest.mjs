@@ -256,7 +256,7 @@ const SCENARIOS = {
     rec('按候选数分带的那张表也在（bands 非空）', (() => { const b = c.bands(); return Array.isArray(b) && b.length > 0 && b.every((x) => x && typeof x === 'object'); })(), { bands: c.bands().length });
     rec('两条独立路线的报告都发货了（greedy / advisory 不是空壳）', JSON.stringify(c.greedyReport()).length > 4 && JSON.stringify(c.advisoryReport()).length > 4, { greedy: Object.keys(c.greedyReport()).slice(0, 6), advisory: Object.keys(c.advisoryReport()).slice(0, 6) });
     rec('这一台设备真的能落盘', c.state.persist === true, { persist: c.state.persist });
-    rec('没有请求任何图片/字体/音频：全部资源同源（零依赖、程序画的）', (() => { const rs = performance.getEntriesByType('resource'); return rs.length > 0 && rs.every((e) => e.name.startsWith(location.origin)) && rs.every((e) => !/\\.(png|jpe?g|gif|webp|woff2?|mp3|ogg)$/i.test(e.name.split('?')[0])); })(), performance.getEntriesByType('resource').map((e) => e.name.replace(location.origin, '/').slice(0, 40)));
+    rec('没有请求任何外部资源：全部同源，位图只准来自本站自己的 icons/，字体与音频为零', (() => { const rs = performance.getEntriesByType('resource'); const key = (n) => n.split('?')[0]; const path = (n) => { try { return new URL(n).pathname; } catch { return n; } }; const ext = rs.filter((e) => !e.name.startsWith(location.origin)).map((e) => e.name); const fonts = rs.filter((e) => /\\.(woff2?|ttf|otf|eot|mp3|ogg|wav|m4a)$/i.test(key(e.name))).map((e) => path(e.name)); const off = rs.filter((e) => /\\.(png|jpe?g|gif|webp|ico)$/i.test(key(e.name)) && !/\\/icons\\/[\\w.-]+$/i.test(path(e.name))).map((e) => path(e.name)); return rs.length > 0 && ext.length === 0 && fonts.length === 0 && off.length === 0; })(), (() => { const rs = performance.getEntriesByType('resource'); return { n: rs.length, bmp: rs.filter((e) => /\\.(png|jpe?g|gif|webp|ico)$/i.test(e.name.split('?')[0])).map((e) => e.name.split('/').pop()) }; })());
     rec('页眉三个模式按钮都在，aria-current 只亮一个', (() => { const b = [...D('modes').querySelectorAll('button')]; return b.length >= 3 && b.filter((x) => x.getAttribute('aria-current') === 'true').length === 1; })(), [...D('modes').querySelectorAll('button')].map((b) => [b.dataset.mode, b.getAttribute('aria-current')]));
     rec('提示语说一句、且只说一句', TXT('hintline').length > 0 && !/\\n/.test(TXT('hintline')), TXT('hintline').slice(0, 90));
     rec('状态快照里没有秘密（不然玩家能读答案）', Object.keys(c.state).indexOf('secret') < 0, Object.keys(c.state));
@@ -488,7 +488,7 @@ const SAVE_B = `(async () => {
   await sleep(160);
   const fresh = call(() => { c.tapRestart(); c.brush([1]); return c.tapAsk(); });
   rec('清档之后照样能玩：一问出得去，续局写到 sessionStorage（存档键不会被一问顶回来）', fresh.ok === true && c.state.asked === 1 && localStorage.getItem(KEY) === null && !!sessionStorage.getItem('ulam.resume.v1'), { asked: c.state.asked, raw: localStorage.getItem(KEY), resume: !!sessionStorage.getItem('ulam.resume.v1') });
-  rec('清档之后照样写得进盘：store.save() 把键原样建回来', c.store.save() === true && localStorage.getItem(KEY) !== null && (() => { const raw = JSON.parse(localStorage.getItem(KEY)); return ['daily', 'records', 'stats', 'unlocked'].join(',') === Object.keys(raw).sort().join(','); })(), { raw: (localStorage.getItem(KEY) || '').slice(0, 90) });
+  rec('清档之后照样写得进盘：store.save() 把键原样建回来', c.store.save() === true && localStorage.getItem(KEY) !== null && (() => { const raw = JSON.parse(localStorage.getItem(KEY)); return ['daily', 'records', 'stats', 'unlocked', 'v'].join(',') === Object.keys(raw).sort().join(','); })(), { raw: (localStorage.getItem(KEY) || '').slice(0, 90) });
   localStorage.setItem(KEY, '{ not json');
   rec('把坏档写进磁盘，等着下一次真重载', localStorage.getItem(KEY) === '{ not json', localStorage.getItem(KEY));
   return { rows };
@@ -502,7 +502,7 @@ const SAVE_C = `(async () => {
   rec('totals() 也回落到全零', (() => { const t = c.store.totals(); return t.solved === 0 && t.atPar === 0 && t.plays === 0 && t.wins === 0 && t.losses === 0; })(), c.store.totals());
   const wrote = call(() => { c.tapRestart(); c.brush([1]); return c.tapAsk(); });
   rec('坏档之后还能继续玩：重开、亮一格、问得出去（局面是活的）', wrote.ok === true && c.state.asked === 1 && c.state.done === false, { asked: c.state.asked, err: wrote.err, raw: (localStorage.getItem(KEY) || '').slice(0, 40) });
-  rec('坏档被读成空白后，store.save() 重写出去的是合法 JSON、还是那四个键、前沿 1', (() => { const okWrite = c.store.save(); const raw = localStorage.getItem(KEY); if (!raw || raw === '{ not json') return false; let p; try { p = JSON.parse(raw); } catch { return false; } return okWrite === true && ['daily', 'records', 'stats', 'unlocked'].join(',') === Object.keys(p).sort().join(',') && p.unlocked === 1; })(), { raw: (localStorage.getItem(KEY) || '').slice(0, 90) });
+  rec('坏档被读成空白后，store.save() 重写出去的是合法 JSON、还是那五个键、前沿 1', (() => { const okWrite = c.store.save(); const raw = localStorage.getItem(KEY); if (!raw || raw === '{ not json') return false; let p; try { p = JSON.parse(raw); } catch { return false; } return okWrite === true && ['daily', 'records', 'stats', 'unlocked', 'v'].join(',') === Object.keys(p).sort().join(',') && p.unlocked === 1; })(), { raw: (localStorage.getItem(KEY) || '').slice(0, 90) });
   rec('坏档没让点击路径开始搜索', c.searchNodes() === 0, { nodes: c.searchNodes() });
   const rr = call(() => c.store.reset());
   rec('reset() 对着坏档也不抛：键被删掉、回到空白（storage.js 说它总是返回 true）', rr.ok === true && rr.v === true && localStorage.getItem(KEY) === null, { ret: rr.v, err: rr.err, raw: localStorage.getItem(KEY) });

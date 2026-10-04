@@ -97,7 +97,7 @@ js/core/storage.js         localStorage 单键：records/stats/daily/unlocked，
 js/data/lots.js            生成的发货数据（`wc -l` 9 603 行 / 80 KiB）：棋书 + 战役 + MINQ + claims
 server.cjs                 零依赖静态服务器（带路径越界防护）
 electron/main.cjs          桌面壳（nodeIntegration:false / contextIsolation:true）
-tools/bake.mjs             重烘 + 全部 census 打印（SAMPLE 默认，FULL=1 上全量） / tools/assemble-site / tools/deploy-set / tools/deploy-set-selftest
+tools/bake.mjs             重烘 + 全部 census 打印（SAMPLE 默认，FULL=1 上全量）
 tools/harness.mjs          node 断言台：rows / asserts / fail
 tools/playtest.mjs           CDP 驱动：attach、注入 5 个场景、取 RESULT
 tools/verify.sh            端口 → 起服务 → 起 Chrome → 5 场景 → 收摊
