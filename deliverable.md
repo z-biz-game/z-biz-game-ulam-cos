@@ -19,7 +19,7 @@
 | 存档单键 `ulam.save.v1`（`best` 只降、`unlocked` 只升、日胜粘住、坏载荷降级、`requireBackend` 抛） | `js/core/storage.js` | `js/core` 里唯一允许碰 `window` 的模块；结案走门面 `store.solve` |
 | 发货数据：棋书 + 战役 + `MINQ` + `MEASURED.claims(19)` + `BRUTE` + `BUDGET` | `js/data/lots.js` | 由 bake 生成，`wc -l` 9 603 行 / 80 KiB，手改会在 `@boot` 上炸 |
 | 重烘 + 全部 census 打印（SAMPLE / FULL 两档） | `tools/bake.mjs` | 确定性；只有 `ms` 与 `BRUTE` 规模两块随档位变 |
-| node 断言台（`test/ok/eq/throws/run`，打 `rows / asserts / fail`） | `tools/harness.mjs` | 七套共用 |
+| node 断言台（`test/ok/eq/throws/run`，打 `rows / asserts / fail`） | `tools/harness.mjs` | 九套共用 |
 | CDP 驱动 + 5 个浏览器场景 | `tools/playtest.mjs` | 读真 DOM、真 canvas 命中、真 localStorage |
 | 端口 → 起服务 → 起 Chrome → 5 场景 → 收摊 | `tools/verify.sh` | 占 5222 / 9372 |
 | 画布几何与绘制（同一份几何既画也做命中测试） | `js/view.js` | 只画像素，不下判断 |
@@ -31,8 +31,8 @@
 
 | 闸 | 结果 |
 | --- | --- |
-| `npm run check` | OK（js / server / electron / tools / test 逐文件） |
-| `npm test`（七套） | 124 行 / 56 258 条断言 / **fail: 0** |
+| `npm run check` | OK（资产 IHDR 闸门 + js / server / electron / tools / test 逐文件 + manifest JSON 解析） |
+| `npm test`（九套） | 141 行 / 56 708 条断言 / **fail: 0** |
 | `npm run verify`（真 Chrome） | `@boot 26 · @play 36 · @routes 33 · @save 63 · @pointer 46` = **204 行 / fail: []** |
 | 同一批场景换成 Pages 的 URL 形态（仓库挂在 `/z-biz-game-ulam-cos/` 这一段下面） | **204 行 / fail: []**；已部署站点上单跑 `@save` 也是 **63 行 / fail: []**（改之前那一趟只落到 44 行、红 6 条，见 DESIGN 8） |
 | 点击路径的搜索节点 | 整局打完 `ulam.searchNodes()` = **0** |

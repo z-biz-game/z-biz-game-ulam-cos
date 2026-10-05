@@ -26,8 +26,8 @@
 不存在游戏逻辑，`npm install` 不是任何一步的前提，CI 里同样没有它。
 
 ```bash
-npm run check     # 逐文件 node --check
-npm test          # 七套 node 断言（本机 124 行 / 56 258 条断言，0 失败）
+npm run check     # 逐文件 node --check + 资产 IHDR 闸门 + manifest JSON 解析
+npm test          # 九套 node 断言（本机 141 行 / 56 708 条断言，0 失败）
 npm run bake      # 重烘 js/data/lots.js（默认 SAMPLE 档；FULL=1 才跑最贵的两条全量扫描）
 npm run verify    # 真 headless Chrome：5 个场景 @boot @play @routes @save @pointer
 npm start         # http://127.0.0.1:5222/         （npm run dev 同义，显式写端口）
@@ -51,7 +51,7 @@ npm run electron  # 桌面壳（唯一的 devDependency 是 electron，只有这
 
 ## 数从哪来
 
-`npm test` 七套（同一台机器 2026-09-27）：
+`npm test` 九套（同一台机器 2026-09-27）：
 
 | 套件 | 行数 | 断言 |
 | --- | --- | --- |
@@ -60,8 +60,15 @@ npm run electron  # 桌面壳（唯一的 devDependency 是 electron，只有这
 | library | 14 | 5 532 |
 | solve | 19 | 370 |
 | state | 17 | 91 |
-| storage | 19 | 223 |
+| storage | 21 | 296 |
 | volume | 16 | 2 109 |
+| anim | 7 | 342 |
+| sound | 8 | 35 |
+
+`anim` 是对帧率无关这条不变式的仓内复验：官方量具 `cos_frame_probe.js` 用 `vm.runInContext`
+装载，进不了本仓的 `<script type="module">`（三档全报 `SyntaxError`），所以判尺由 `tools/anim_probe.mjs`
+自己在 30/60/120Hz 下逐字段对拍，并带一条阴性对照（把累加器 `accum += elapsed` 改成常量必须变红）；
+`sound` 钉的是真静音 —— `setMuted(true)` 走 `ctx.suspend()` 且静音期间一个振荡器节点都不新建。
 
 `npm run verify` 的浏览器断言：`@boot 26 · @play 36 · @routes 33 · @save 63 · @pointer 46`
 = **204 行，0 失败**。它们读的是真 DOM、真 canvas 命中、真 localStorage，不读任何内部开关。
@@ -81,7 +88,11 @@ V = 2^q 的**刚好塞满**型反例；`unmeasured = 0`（没有一格是因为�
 
 ```
 index.html                 单页壳：战役 / 每日 / 随机 / 规则 / 续局 / 成绩 / 关卡库
-css/game.css               版式与主题（无框架）
+manifest.webmanifest       可安装 PWA：name/start_url/display/theme_color + icons 指向盘上真 PNG
+sw.js                      离线缓存：同源子资源网络优先、失败退缓存，cache 名带 VERSION
+css/game.css               版式与主题（无框架），safe-area env() + ≥44px 命中区 + reduceMotion 分支
+assets/icons/ assets/art/  工厂产出的真位图（favicon/apple-touch/PWA 192·512·1024/maskable + 盘底纹理、秘密环、og 卡）
+assets/gen/gen_art.py      上面这批美术的唯一来源，纯确定性（SEED 固定），逐字节可复现
 js/main.js                 路由与外壳：判定一律查表，结案走 store.solve 门面
 js/view.js                 画布几何与绘制（同一份几何既画也做命中测试）
 js/core/state.js           一局的权重状态：total / formatState / describeState / fresh
@@ -97,11 +108,13 @@ js/core/storage.js         localStorage 单键：records/stats/daily/unlocked，
 js/data/lots.js            生成的发货数据（`wc -l` 9 603 行 / 80 KiB）：棋书 + 战役 + MINQ + claims
 server.cjs                 零依赖静态服务器（带路径越界防护）
 electron/main.cjs          桌面壳（nodeIntegration:false / contextIsolation:true）
+tools/asset_gate.mjs       资产闸门：手读 PNG IHDR / ICO 目录，占位符（0 字节、SVG 冒充、尺寸不符）当场判红
+tools/anim_probe.mjs       帧率对拍 harness：30/60/120Hz 逐字段比末态 + 阴性对照（anim.test 的实现）
 tools/bake.mjs             重烘 + 全部 census 打印（SAMPLE 默认，FULL=1 上全量）
 tools/harness.mjs          node 断言台：rows / asserts / fail
 tools/playtest.mjs           CDP 驱动：attach、注入 5 个场景、取 RESULT
 tools/verify.sh            端口 → 起服务 → 起 Chrome → 5 场景 → 收摊
-test/*.test.mjs            七套：brute game library solve state storage volume
+test/*.test.mjs            九套：brute game library solve state storage volume anim sound
 ```
 
 ## 许可

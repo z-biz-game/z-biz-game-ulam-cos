@@ -98,13 +98,13 @@ SAMPLE 烘掉。反过来说清楚：一次 SAMPLE 烘**会**把 `BRUTE` 那块�
 | bruteAgreement(n≤6,k≤2,q≤4) | 232 |
 
 FULL 档最贵的那条（Σa≤32 头条 universe）随数据发布在 `MEASURED.universe.totals.ms = 26 486`。
-node 七套与浏览器五场景的耗时会随机器和负载浮动，所以**不写进 `lots.js`**（那文件的头注就是
+node 九套与浏览器五场景的耗时会随机器和负载浮动，所以**不写进 `lots.js`**（那文件的头注就是
 这么规定的）：只有会被断言的事实才进数据，墙钟关在 bake 的 stdout 里。
 
 ## 7. 复现清单
 
 ```bash
-npm run check && npm test          # 语法 + 七套断言
+npm run check && npm test          # 语法 + 九套断言
 npm run verify                     # 真 Chrome 五场景（@boot @play @routes @save @pointer）
 node tools/bake.mjs                # SAMPLE 重烘（注意：会改写 js/data/lots.js）
 FULL=1 node tools/bake.mjs         # 全量：头条 universe + 第三族对表
@@ -149,7 +149,7 @@ Pages 把站点挂在 `/z-biz-game-ulam-cos/` 下面，同一个串就成了
 
 `js/main.js:391` 调 `store.solve(...)`，而 `solve` 当时只是 `storage.js` 的**模块级导出**，
 `store` 门面（`record/unlock/markDaily/totals/…`）上没有这个名字。浏览器里每次结案都
-`TypeError`，而且**node 七套全绿看不出任何事** —— 测试调的是模块级那个入口，一直好得很。
+`TypeError`，而且**node 九套全绿看不出任何事** —— 测试调的是模块级那个入口，一直好得很。
 后果是玩家打赢一关之后：纪录不落盘、解锁前沿不动、页眉停在 0/14、结案卡片根本不浮起、
 每日一题也钉不进 daily。
 
