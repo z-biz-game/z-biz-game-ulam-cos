@@ -7,7 +7,7 @@
 //
 // file:// 下这段代码根本不会被注册（index.html 的注册脚本按 protocol 挡掉了），所以这里不需要
 // 再对 file: 特判；WorkerGlobalScope 里没有 document，也不许引用。
-const VERSION = 'ulam-v2026.10.02-1';
+const VERSION = 'ulam-v2026.10.05-1';
 const CACHE = `ulam-cache-${VERSION}`;
 
 // 装不上全部资源也没关系：addAll 失败只记一次，不阻塞 install（否则一个 404 就把可安装性整个废掉）

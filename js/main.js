@@ -55,7 +55,10 @@ const LEVELS = lotCount();
 const CAN_PERSIST = persistent();
 // 两条 reduceMotion 分支共用这一个读数：CSS 的 @media 关掉 transition/animation，JS 这边关掉
 // 呼吸与金闪（js/view.js setReducedMotion），标题卡退成静图。
-const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+// 它必须是**活值**：系统偏好可以在页面开着的时候被改，CSS 那半边自己会跟，JS 这半边不跟就会
+// 出现「关掉了动画偏好，盘上的格子还在呼吸」—— 所以存 matches 的快照 + 下面挂 change 监听。
+const RMQ = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+let motionReduced = !!(RMQ && RMQ.matches);
 const RESUME_KEY = 'ulam.resume.v1';
 
 const app = {
@@ -377,7 +380,7 @@ function commit() {
   resume.write(location.hash || '#/c/1', g.id, g.log.map((e) => e.ids));
   drawProof();
   const bumped = bumpedCells(g);
-  view.setGame(g, REDUCED_MOTION ? [] : bumped);
+  view.setGame(g, motionReduced ? [] : bumped);
   const a = gameState(g);
   render(`第 ${g.log.length} 问：答“${r.answer === 'yes' ? '在' : '不在'}” · 候选 ${total(a)} · `
     + `权重 <b>(${a.join('|')})</b> · 还剩 ${r.qLeft} 问`);
@@ -694,7 +697,7 @@ window.addEventListener('keydown', (ev) => {
 });
 
 view = createView(el.canvas, {
-  reducedMotion: REDUCED_MOTION,
+  reducedMotion: motionReduced,
   onToggle: (id) => tapCell(id),
   onBrush: (ids, added) => {
     const g = app.game;
@@ -706,6 +709,14 @@ view = createView(el.canvas, {
     render(`正把 ${ids.length} 格${added ? '刷亮' : '熄灭'} · 当前亮 ${g.draft.length} 格`);
   },
 });
+
+// 系统里那条「减弱动态效果」可以在一局中间被改：CSS 自己跟，JS 这边得有人把同一个读数推给画布。
+// 老 Safari 只有 addListener（没有 addEventListener），两条都试过，缺哪个跳过哪个。
+if (RMQ) {
+  const applyMotion = (on) => { motionReduced = !!on; view.setReducedMotion(motionReduced); };
+  if (RMQ.addEventListener) RMQ.addEventListener('change', (e) => applyMotion(e.matches));
+  else if (RMQ.addListener) RMQ.addListener((e) => applyMotion(e.matches));
+}
 
 // One cell, one meaning: while asking it toggles the batch; once the position is settled it is an
 // accusation, because 指对才算赢 (js/core/game.js accuse()).
@@ -796,7 +807,7 @@ function stateSnapshot() {
     sound: sound.state(),
     anim: view.anim(),
     fullscreen: !!fsElement(),
-    reducedMotion: REDUCED_MOTION,
+    reducedMotion: motionReduced,
     settingsKey: SETTINGS_KEY,
     settingsPersisted: CAN_PERSIST,
   };
