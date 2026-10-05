@@ -3,11 +3,16 @@
 // Shell only: no node in the page, no privileged bridge — js/main.js is the same file the
 // browser loads, so the desktop build cannot have abilities the tested build lacks.
 const { app, BrowserWindow } = require('electron');
+const path = require('path');
+const { existsSync } = require('fs');
 const { startServer } = require('../server.cjs');
 
 async function createWindow() {
   const server = await startServer({ port: 0 });
   const { port } = server.address();
+  // 任务栏/Dock 用的是仓里那张 512 真位图，不是 Electron 默认图标；文件不在就不传，
+  // 一个缺资产不该让窗口开不出来（macOS 的 Dock 图标来自 bundle，与这里无关）。
+  const iconPath = path.join(__dirname, '..', 'assets', 'icons', 'icon-512.png');
   const win = new BrowserWindow({
     width: 1180,
     height: 820,
@@ -16,6 +21,7 @@ async function createWindow() {
     backgroundColor: '#0d1319',
     title: '谎话藏数',
     autoHideMenuBar: true,
+    ...(existsSync(iconPath) ? { icon: iconPath } : {}),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

@@ -30,7 +30,7 @@ CHROME=${CHROME_BIN:-}
 # 资产闸门是第一条，而且故意在 Chrome 之前：它不需要浏览器、不占端口，而占位符图（0 字节 /
 # SVG 冒充 PNG / 尺寸与 manifest 声明不符）正是最不该等到页面跑起来才看见的那类问题。
 echo "=== assets ==="
-node tools/asset_gate.mjs || exit 1
+node "$HERE/tools/asset_gate.mjs" || exit 1
 
 # ---- pre-flight: no other agent's Chrome may be squatting our debug port -------------------
 if lsof -nP -iTCP:"$CDP_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
