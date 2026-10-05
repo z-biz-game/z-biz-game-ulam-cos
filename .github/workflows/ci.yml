@@ -24,6 +24,10 @@ jobs:
         run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
       - name: Suites
         run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+      # 占位符资产在字符串扫描里和真资产长得一模一样，只有读 IHDR 才分得开。这条闸门不需要
+      # Chrome：0 字节、SVG 冒充 PNG、manifest 声明 192 而实测 64，都在这里红，而不是等到商店截图。
+      - name: Assets
+        run: node tools/asset_gate.mjs
 
   # js/data/lots.js is GENERATED (tools/bake.mjs: exact DP × volume bound × concrete-candidate brute
   # force, three routes that refuse to write unless they agree), so it can drift from the code that

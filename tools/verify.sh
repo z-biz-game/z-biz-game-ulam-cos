@@ -27,6 +27,11 @@ BASE=${BASE_URL:-http://127.0.0.1:$WEB_PORT/}
 SHOTS=${SHOTS_DIR:-/tmp/ulam-shots}
 CHROME=${CHROME_BIN:-}
 
+# 资产闸门是第一条，而且故意在 Chrome 之前：它不需要浏览器、不占端口，而占位符图（0 字节 /
+# SVG 冒充 PNG / 尺寸与 manifest 声明不符）正是最不该等到页面跑起来才看见的那类问题。
+echo "=== assets ==="
+node tools/asset_gate.mjs || exit 1
+
 # ---- pre-flight: no other agent's Chrome may be squatting our debug port -------------------
 if lsof -nP -iTCP:"$CDP_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "devtools port :$CDP_PORT is already LISTENING — an orphan Chrome from another builder." >&2
