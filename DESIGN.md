@@ -138,7 +138,7 @@ Pages 把站点挂在 `/z-biz-game-ulam-cos/` 下面，同一个串就成了
 `https://z-biz-game.github.io/js/core/storage.js` —— 404。而一次失败的动态 import 把整段注入脚本
 拦腰抛断，Pages 上 `@save` 只落 44 行（其中 6 行红），本机同一份代码 63 行全绿：差的 19 行**根本没跑**，
 红的那几条里还包括"纪录跨重载读回来""前沿还在"这种真·存档主张。产品本身没坏 —— 页面自己的 import
-全是相对说明符，`pages.yml` 逐条查过 —— 坏的是这条路径在发货形态下从来没被跑过。
+全是相对说明符，`tools/site-selfcontained.mjs`（pages.yml 上线前那一步）逐条查过 —— 坏的是这条路径在发货形态下从来没被跑过。
 
 两处一起改。测试侧：`MOD(p)`（`tools/playtest.mjs:206`）以 `document.baseURI` 为基解析，前缀是什么
 都指向同一份发货代码。门禁侧：`ci.yml` 的 browser job 跑两遍，第二遍把仓库软链进一个路径段、用

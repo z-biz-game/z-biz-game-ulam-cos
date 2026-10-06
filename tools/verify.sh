@@ -113,6 +113,11 @@ if [ -z "${SKIP_UNIT:-}" ]; then
   echo "=== deploy-set ==="
   node tools/deploy-set.mjs || FAILED=1
   node tools/deploy-set-selftest.mjs || FAILED=1
+  # 产物自洽闸：pages.yml 上线前那一步的全部逻辑。它以前只活在 workflow 的 run: 里，本仓一道
+  # 本地闸都没跑过，于是红了三次推送没人知道——build 一红就没有 artifact，线上冻在旧产物上。
+  echo "=== site self-contained ==="
+  node tools/site-selfcontained.mjs || FAILED=1
+  node tools/site-selfcontained.mjs --selftest || FAILED=1
 fi
 
 export CDP_PORT

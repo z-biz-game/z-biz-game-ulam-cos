@@ -33,6 +33,12 @@ jobs:
       # 必须不算引用。钉住的条数由这一跑证明它真的会红，不是由记性证明。
       - name: Deploy set gate proves it can fail
         run: node tools/deploy-set-selftest.mjs
+      # 产物自洽闸：Pages 上线前那一步的全部逻辑，本地整闸与 pages.yml 都调同一支脚本。
+      # 它以前只活在 pages.yml 的 run: 里，本仓没有一道本地闸跑过它，于是它红了三次推送没人知道。
+      - name: Artifact is self-contained
+        run: node tools/site-selfcontained.mjs
+      - name: Artifact gate proves it can fail
+        run: node tools/site-selfcontained.mjs --selftest
 
   # js/data/lots.js is GENERATED (tools/bake.mjs: exact DP × volume bound × concrete-candidate brute
   # force, three routes that refuse to write unless they agree), so it can drift from the code that

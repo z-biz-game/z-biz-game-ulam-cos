@@ -14,7 +14,9 @@
     "test": "npm run check && npm run unit",
     "verify": "bash tools/verify.sh",
     "deploy-set": "node tools/deploy-set.mjs",
-    "deploy-set:selftest": "node tools/deploy-set-selftest.mjs"
+    "deploy-set:selftest": "node tools/deploy-set-selftest.mjs",
+    "site-self": "node tools/site-selfcontained.mjs",
+    "site-self:selftest": "node tools/site-selfcontained.mjs --selftest"
   },
   "keywords": [
     "game",
