@@ -158,6 +158,18 @@ X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上�
 把 ci.yml 里那行 `run: node tools/deploy-set.mjs` 砍掉，本仓整闸必须点名红且退出码非 0。
 所以「本地全绿、线上 404 自己的 manifest / sw.js / 图标」这一类坏法在本地就会红。
 
+## 本地整闸的单测段以前判的是 `tail` 的退出码
+
+`tools/verify.sh` 的 `=== node suites ===` 一段原先每支套件写的是 `node "$f" | tail -1 || FAILED=1`。
+`||` 判的是管道里最后一个命令：`tail` 读到 EOF 就退 0，所以套件红透 `FAILED` 也不会被抬起来，
+脚本末尾照旧打印 `=== ALL GREEN ===`。CI 判单测靠的是 `npm run unit` 那条 job（两条浏览器 job 都带
+`SKIP_UNIT=1`），所以这一条坑的是本地——坑的正是"一把梭验收闸"这句话本身。
+
+现在先取 `node` 自己的退出码、再截尾行显示。两个方向都从定稿脚本里把那段循环体原样摘出来跑：
+干净树给出 7 支套件各自的 `rows: … asserts: … fail: 0` 与 `FAILED=0`；同一块文本在一份多插了
+一条注定红套件的临时副本上给出 `FAILED=1`，而旧写法（`| tail -1 || FAILED=1`）在同一份红副本上
+给的是 `FAILED=0`。
+
 ## 上线前那一步以前只有 Pages 会跑
 
 `pages.yml` 在 upload 之前有一步叫 `The artifact is self-contained`，body 是手抄的七行 shell。

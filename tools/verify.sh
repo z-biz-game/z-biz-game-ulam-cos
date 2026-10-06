@@ -104,9 +104,15 @@ FAILED=0
 echo "=== node suites ==="
 # SKIP_UNIT=1 for the browser job in CI: the suites are their own job there.
 if [ -z "${SKIP_UNIT:-}" ]; then
+  # `node "$f" | tail -1 || FAILED=1` 里的 `||` 判的是 tail：tail 读到 EOF 就退 0，所以套件
+  # 红透这一行也不会把 FAILED 抬起来，脚本照旧打印 === ALL GREEN ===。CI 判单测的是
+  # `npm run unit` 那条 job（两条浏览器 job 都带 SKIP_UNIT=1），坑的是本地这道"一次性验收闸"。
+  # 先取退出码再截尾行：显示的还是那一行读数，判定用的是 node 自己的 rc。
   for f in test/*.test.mjs; do
     echo "--- $f"
-    node "$f" | tail -1 || FAILED=1
+    OUT=$(node "$f" 2>&1); ORC=$?
+    printf '%s\n' "$OUT" | tail -1
+    [ $ORC -eq 0 ] || FAILED=1
   done
   # 部署集闸：ci.yml 跑这两步、本地整闸以前一次都不跑（59 仓同形）。「本地全绿、线上 404 自己的
   # manifest / sw.js / 图标」这一类坏法缺的就是这一步。它不碰 Chrome，所以放在 node suites 里。
