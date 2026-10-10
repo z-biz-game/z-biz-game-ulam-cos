@@ -488,7 +488,7 @@ const SAVE_B = `(async () => {
   await sleep(160);
   const fresh = call(() => { c.tapRestart(); c.brush([1]); return c.tapAsk(); });
   rec('清档之后照样能玩：一问出得去，续局写到 sessionStorage（存档键不会被一问顶回来）', fresh.ok === true && c.state.asked === 1 && localStorage.getItem(KEY) === null && !!sessionStorage.getItem('ulam.resume.v1'), { asked: c.state.asked, raw: localStorage.getItem(KEY), resume: !!sessionStorage.getItem('ulam.resume.v1') });
-  rec('清档之后照样写得进盘：store.save() 把键原样建回来', c.store.save() === true && localStorage.getItem(KEY) !== null && (() => { const raw = JSON.parse(localStorage.getItem(KEY)); return ['daily', 'records', 'stats', 'unlocked'].join(',') === Object.keys(raw).sort().join(','); })(), { raw: (localStorage.getItem(KEY) || '').slice(0, 90) });
+  rec('清档之后照样写得进盘：store.save() 把键原样建回来', c.store.save() === true && localStorage.getItem(KEY) !== null && (() => { const raw = JSON.parse(localStorage.getItem(KEY)); return ['daily', 'records', 'stats', 'unlocked', 'v'].join(',') === Object.keys(raw).sort().join(','); })(), { raw: (localStorage.getItem(KEY) || '').slice(0, 90) });
   localStorage.setItem(KEY, '{ not json');
   rec('把坏档写进磁盘，等着下一次真重载', localStorage.getItem(KEY) === '{ not json', localStorage.getItem(KEY));
   return { rows };
@@ -502,7 +502,7 @@ const SAVE_C = `(async () => {
   rec('totals() 也回落到全零', (() => { const t = c.store.totals(); return t.solved === 0 && t.atPar === 0 && t.plays === 0 && t.wins === 0 && t.losses === 0; })(), c.store.totals());
   const wrote = call(() => { c.tapRestart(); c.brush([1]); return c.tapAsk(); });
   rec('坏档之后还能继续玩：重开、亮一格、问得出去（局面是活的）', wrote.ok === true && c.state.asked === 1 && c.state.done === false, { asked: c.state.asked, err: wrote.err, raw: (localStorage.getItem(KEY) || '').slice(0, 40) });
-  rec('坏档被读成空白后，store.save() 重写出去的是合法 JSON、还是那四个键、前沿 1', (() => { const okWrite = c.store.save(); const raw = localStorage.getItem(KEY); if (!raw || raw === '{ not json') return false; let p; try { p = JSON.parse(raw); } catch { return false; } return okWrite === true && ['daily', 'records', 'stats', 'unlocked'].join(',') === Object.keys(p).sort().join(',') && p.unlocked === 1; })(), { raw: (localStorage.getItem(KEY) || '').slice(0, 90) });
+  rec('坏档被读成空白后，store.save() 重写出去的是合法 JSON、还是那五个键、前沿 1', (() => { const okWrite = c.store.save(); const raw = localStorage.getItem(KEY); if (!raw || raw === '{ not json') return false; let p; try { p = JSON.parse(raw); } catch { return false; } return okWrite === true && ['daily', 'records', 'stats', 'unlocked', 'v'].join(',') === Object.keys(p).sort().join(',') && p.unlocked === 1; })(), { raw: (localStorage.getItem(KEY) || '').slice(0, 90) });
   rec('坏档没让点击路径开始搜索', c.searchNodes() === 0, { nodes: c.searchNodes() });
   const rr = call(() => c.store.reset());
   rec('reset() 对着坏档也不抛：键被删掉、回到空白（storage.js 说它总是返回 true）', rr.ok === true && rr.v === true && localStorage.getItem(KEY) === null, { ret: rr.v, err: rr.err, raw: localStorage.getItem(KEY) });

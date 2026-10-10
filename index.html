@@ -2,53 +2,19 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#0d1319">
-<meta name="description" content="谎话藏数 ULAM：一个数藏在 1..n 里，你最多问 q 个子集问题，对方最多撒 k 个谎。屏幕上并排印着 Berlekamp 体积界的预测与极小极大 DP 量出的真值——教科书说 4 问必中的那一格，真值是 5 问。">
-<!-- 图标全部是盘上的真位图（assets/gen/gen_art.py 产，file + PNG IHDR 实测过宽高），
-     不再是内联 data-URI SVG：那张 32px 的 SVG 既装不上桌面，也上不了商店截图。
-     favicon.ico 放在文档根：每个浏览器都会自己去要它，404 会被 tools/verify.sh 记成 console error。 -->
-<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
-<link rel="icon" type="image/png" sizes="48x48" href="assets/icons/favicon-48.png">
-<!-- 180 那一张是给高分屏与「添加到主屏」以外的入口用的：盘上有图但页面不引用 = 死资产。 -->
-<link rel="icon" type="image/png" sizes="180x180" href="assets/icons/favicon-180.png">
-<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
-<link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="谎话藏数">
-<meta property="og:type" content="website">
-<!-- canonical / og:url / og:image 一律写部署后的绝对 URL：社交爬虫不跑 JS，相对路径等于没有图。
-     域名走农场统一的 https://z-biz-game.github.io/<repo>/ 形态（与 .github/workflows/pages.yml 同源）。 -->
-<link rel="canonical" href="https://z-biz-game.github.io/z-biz-game-ulam-cos/">
-<meta property="og:url" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/">
-<meta property="og:title" content="谎话藏数 · ULAM">
-<meta property="og:description" content="界会说谎，DP 不会：一个把 Berlekamp 体积界与极小极大真值并排印在屏幕上的说谎者搜数游戏。">
-<meta property="og:image" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/assets/art/og-card.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="谎话藏数 ULAM：2x2 热力度网格、秘密环与指认斜线，并排印着体积界与 DP 真值">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/assets/art/og-card.png">
+<meta name="description" content="谎话藏数 ULAM：一个数藏在 1..n 里，你最多问 q 个子集问题，对方最多撒 k 个谎。屏幕上并排印着 Berlekamp 体积界的预测与极小极大 DP 量出的真值——教科书说 4 问必中的那一格，真值是 5 问。"><meta property="og:title" content="谎话藏数 · ULAM"><meta property="og:description" content="谎话藏数 ULAM：一个数藏在 1..n 里，你最多问 q 个子集问题，对方最多撒 k 个谎。屏幕上并排印着 Berlekamp 体积界的预测与极小极大 DP 量出的真值——教科书说 4 问必中的那一格，真值是 5 问。"><meta property="og:image" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/icons/icon-512.png"><meta name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/icons/icon-512.png">
+<!-- Inline data-URI favicon: a Pages deploy has no /favicon.ico, and the 404 it produces is
+     counted as a console error by tools/verify.sh. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1319'/%3E%3Crect x='4' y='4' width='10' height='10' rx='2' fill='%233ddad7'/%3E%3Crect x='18' y='4' width='10' height='10' rx='2' fill='%23223440'/%3E%3Crect x='4' y='18' width='10' height='10' rx='2' fill='%23223440'/%3E%3Crect x='18' y='18' width='10' height='10' rx='2' fill='%23f0b544'/%3E%3C/svg%3E">
 <title>谎话藏数 · ULAM</title>
 <link rel="stylesheet" href="css/game.css">
-<script>
-// 可安装的那一半：service worker 注册。三条实测约束钉在这里——
-//   1) file:// 下不注册（SW 在 file: 上必然 reject，抛出来的未捕获异常会脏了 console 闸门）；
-//   2) 路径按 document.baseURI 解析，因为 Pages 把仓挂在 /<repo>/ 前缀下，绝对路径会 404；
-//   3) 注册失败静默降级：不能安装不等于不能玩。
-(() => {
-  if (location.protocol === 'file:' || !('serviceWorker' in navigator)) return;
-  window.addEventListener('load', () => {
-    try {
-      navigator.serviceWorker.register(new URL('sw.js', document.baseURI).href, { scope: './' })
-        .catch(() => { /* 离线能力是附加物 */ });
-    } catch (err) { /* 老浏览器没有 new URL(src, base) */ }
-  });
-})();
-</script>
+
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
 
@@ -157,6 +123,7 @@
       <button type="button" id="hint">提示</button>
       <button type="button" id="restart">重开</button>
       <button type="button" id="share">分享</button>
+      <button id="btn-fullscreen" type="button" aria-pressed="false" title="全屏（F）">全屏</button>
     </div>
     <ul class="legend" id="legend">
       <li><i class="sw sw-lit"></i>亮着：这一问算进“在亮格里吗”</li>
@@ -185,5 +152,6 @@
 
 <p class="toast" id="toast" hidden></p>
 <script type="module" src="js/main.js"></script>
+  <script src="js/sw-register.js"></script>
 </body>
 </html>

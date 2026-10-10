@@ -1,26 +1,26 @@
 {
-  "name": "谎话藏数 · ULAM",
+  "name": "谎话藏数",
   "short_name": "谎话藏数",
-  "description": "一个数藏在 1..n 里，你最多问 q 个子集问题，对方最多撒 k 个谎。屏幕并排印着 Berlekamp 体积界与极小极大 DP 真值。",
-  "id": "./",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": ".",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
-  "orientation": "any",
-  "background_color": "#0d1319",
-  "theme_color": "#0d1319",
-  "lang": "zh-CN",
-  "dir": "ltr",
-  "categories": ["games", "puzzle", "education"],
+  "background_color": "#0a0a12",
+  "theme_color": "#0a0a12",
   "icons": [
-    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "assets/icons/icon-1024.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
-    { "src": "assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ],
-  "shortcuts": [
-    { "name": "接着上局", "short_name": "继续", "url": "./#/menu", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "每日谎话", "short_name": "每日", "url": "./#/daily", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

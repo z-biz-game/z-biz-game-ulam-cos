@@ -13,7 +13,11 @@
     "check": "node tools/asset_gate.mjs && for f in js/*.js js/*/*.js sw.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && node -e 'JSON.parse(require(\"fs\").readFileSync(\"manifest.webmanifest\",\"utf8\"))' && echo OK",
     "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
     "test": "npm run check && npm run unit",
-    "verify": "bash tools/verify.sh"
+    "verify": "bash tools/verify.sh",
+    "deploy-set": "node tools/deploy-set.mjs",
+    "deploy-set:selftest": "node tools/deploy-set-selftest.mjs",
+    "site-self": "node tools/site-selfcontained.mjs",
+    "site-self:selftest": "node tools/site-selfcontained.mjs --selftest"
   },
   "keywords": [
     "game",

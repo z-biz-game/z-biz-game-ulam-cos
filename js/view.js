@@ -91,7 +91,13 @@ export function createView(canvas, { onToggle, onBrush, reducedMotion = false } 
   const T = tokens();
   let game = null;
   let geo = { cell: 40, gap: 8, cols: 1, rows: 1, ox: PAD, oy: PAD, ledger: 18, w: 320, h: 320 };
-  let flash = new Map();     // id -> 已经闪了多少毫秒（定步长推进，不是每帧 +0.08）
+  let flash = new Map();     // id -> 0..1, 刚被推高一格的格子闪一下
+  let flashT0 = 0;           // performance.now() when the current flash was armed
+  // The flash used to advance 0.08 per FRAME, so it needed a fixed 12.5 frames: the same answer
+  // faded out in 417ms at 30Hz and 104ms at 120Hz. FLASH_MS is that same 60Hz look (12.5 frames
+  // * 16.67ms) written as a duration, and the tick below advances by real elapsed time.
+  const FLASH_MS = 208;
+  const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   let raf = 0;
   let press = null;          // { anchor, added, moved }
   let paused = false;
@@ -444,18 +450,38 @@ export function createView(canvas, { onToggle, onBrush, reducedMotion = false } 
     paused = false;
     if (raf && typeof window !== 'undefined' && window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
     raf = 0;
+    if (flash.size) {
+      // The one line that still eats frame dt. Clamped to 50ms so a backgrounded tab (rAF stops
+      // firing) resumes the fade instead of ending it on the first frame back.
+      const now = nowMs();
+      const dt = flashT0 ? Math.min(0.05, (now - flashT0) / 1000) : 0;
+      flashT0 = now;
+      const k = (dt * 1000) / FLASH_MS;
+      if (k > 0) {
+        const next = new Map();
+        for (const [id, v] of flash) {
+          const t = v + k;
+          if (t < 1) next.set(id, t);
+        }
+        flash = next;
+      }
+    }
+    draw();
+    if (flash.size && !raf) raf = window.requestAnimationFrame(tick);
   }
 
   return {
     setGame(g, changed = []) {
       const was = game;
       game = g;
-      // 换局清空；`changed` 非空就重新上膛（commit 传进来的是同一个 g 对象，
-      // 按 `was !== g` 判会让金闪永远画不出来 —— 这是 dt 重写之前就存在的缺陷）；
-      // 空 list 不动已经在跑的闪光，否则紧随其后的 render() 会把它当场抹掉。
-      if (was !== g) flash = new Map();
-      if (changed.length && !motionOff) flash = new Map(changed.map((id) => [id, 0]));
-      if (needsFrame()) schedule();
+      if (was !== g && changed.length) {
+        flash = new Map(changed.map((id) => [id, 0]));
+        flashT0 = 0;   // re-arm the fade clock with the flash
+      } else if (was !== g) {
+        flash = new Map();
+        flashT0 = 0;
+      }
+      if (flash.size && !raf) raf = window.requestAnimationFrame(tick);
       else draw();
     },
     // 暂停的画布半边：仿真停摆（advance 直接 return），画面留一版带"已暂停"的静图。

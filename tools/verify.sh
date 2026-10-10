@@ -42,12 +42,12 @@ if lsof -nP -iTCP:"$WEB_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "web port :$WEB_PORT is already LISTENING — pick WEB_PORT." >&2
   exit 7
 fi
-ORPHANS=$(pgrep -fl "remote-debugging-port" 2>/dev/null | grep -v "$$" | wc -l | tr -d ' ')
+ORPHANS=$(ps -Ao command= | awk '/remote-debugging[-]port/ && !/--type=/' | wc -l | tr -d ' ')  # instances, not processes: helper argvs repeat the flag
 if [ "${ORPHANS}" != "0" ] && [ -z "${ALLOW_ORPHAN_CHROME:-}" ]; then
   echo "$ORPHANS headless Chrome(s) with a remote-debugging-port are already running on this" >&2
   echo "machine. One at a time is the rule; verify that they are yours, then set" >&2
   echo "ALLOW_ORPHAN_CHROME=1 CDP_PORT=<free port> to proceed." >&2
-  pgrep -fl remote-debugging-port >&2 || true
+  ps -Ao pid=,etime=,command= | awk '/remote-debugging[-]port/ && !/--type=/' >&2 || true
   exit 8
 fi
 
@@ -109,10 +109,26 @@ FAILED=0
 echo "=== node suites ==="
 # SKIP_UNIT=1 for the browser job in CI: the suites are their own job there.
 if [ -z "${SKIP_UNIT:-}" ]; then
+  # `node "$f" | tail -1 || FAILED=1` 里的 `||` 判的是 tail：tail 读到 EOF 就退 0，所以套件
+  # 红透这一行也不会把 FAILED 抬起来，脚本照旧打印 === ALL GREEN ===。CI 判单测的是
+  # `npm run unit` 那条 job（两条浏览器 job 都带 SKIP_UNIT=1），坑的是本地这道"一次性验收闸"。
+  # 先取退出码再截尾行：显示的还是那一行读数，判定用的是 node 自己的 rc。
   for f in test/*.test.mjs; do
     echo "--- $f"
-    node "$f" | tail -1 || FAILED=1
+    OUT=$(node "$f" 2>&1); ORC=$?
+    printf '%s\n' "$OUT" | tail -1
+    [ $ORC -eq 0 ] || FAILED=1
   done
+  # 部署集闸：ci.yml 跑这两步、本地整闸以前一次都不跑（59 仓同形）。「本地全绿、线上 404 自己的
+  # manifest / sw.js / 图标」这一类坏法缺的就是这一步。它不碰 Chrome，所以放在 node suites 里。
+  echo "=== deploy-set ==="
+  node tools/deploy-set.mjs || FAILED=1
+  node tools/deploy-set-selftest.mjs || FAILED=1
+  # 产物自洽闸：pages.yml 上线前那一步的全部逻辑。它以前只活在 workflow 的 run: 里，本仓一道
+  # 本地闸都没跑过，于是红了三次推送没人知道——build 一红就没有 artifact，线上冻在旧产物上。
+  echo "=== site self-contained ==="
+  node tools/site-selfcontained.mjs || FAILED=1
+  node tools/site-selfcontained.mjs --selftest || FAILED=1
 fi
 
 export CDP_PORT
