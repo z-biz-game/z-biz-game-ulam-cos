@@ -306,7 +306,7 @@ test('storage: 半坏的载荷 —— unlocked 不是数字退回 1，stats 逐�
   eq(m.store.unlock(2), 2, '降级之后照样能往前写');
 });
 
-test('storage: records 逐条清洗 —— 烂的那条只丢自己，好的那条一点不受牵连', () => {
+test('storage: 第二段解码 —— 一条烂记录只丢那一条，不连坐、也不原样透传', () => {
   const payload = {
     records: {
       good: { solved: true, best: 3, plays: 2, atPar: true },
@@ -320,11 +320,15 @@ test('storage: records 逐条清洗 —— 烂的那条只丢自己，好的那�
   };
   const m = use(fakeLS(new Map([[KEY, JSON.stringify(payload)]])));
   eq(m.store.record('good').best, 3, '一条坏的拖累不了好的');
-  eq(m.store.record('junk'), null, '不是对象的记录直接丢掉，绝不原样透传成一条"记录"');
-  eq(m.store.record('half'), { solved: false, best: null, plays: 0, atPar: false },
-    '半条记录逐字段归一成默认，而不是让缺字段漏进业务代码');
-  eq(m.store.totals(), { solved: 1, atPar: 1, plays: 0, wins: 0, losses: 0 }, 'totals 只数 r && r.solved，烂记录进不了账');
-  eq(m.store.dailyDone('nope'), 3, '不合格的日历键照样读得回来 —— 连击是调用方的事');
+  eq(m.store.record('junk'), null, '"garbage" 不是记录形状 —— 丢掉，而不是原样交给 renderMenu 去 .best');
+  eq(m.store.record('half'), null, '说不出任何事实的空壳不是记录');
+  eq(m.store.record('nul'), null);
+  eq(m.store.record('list'), null, '数组不是记录');
+  eq([m.store.record('wild').solved, m.store.record('wild').best], [true, null], '越界的 best 归 null，同一条里的 solved 仍然作数');
+  eq(m.corruptCount(), 5, 'records 丢 4 条 + daily 丢 1 条；wild 被修好而不是丢掉');
+  eq(m.store.dailyDone('2026-05-01').questions, 4, '同一天里的合格项照常读回');
+  eq(m.store.dailyDone('nope'), null, 'daily 同样逐条：数字不是日历项');
+  eq(m.store.totals(), { solved: 2, atPar: 1, plays: 0, wins: 0, losses: 0 }, 'good + wild 都是 solved');
   eq(m.solve('junk', { questions: 2, par: 2, hints: 0, lies: 0, won: true }).best, 2, '打一次就把那条烂记录覆盖掉');
   eq(m.store.totals().solved, 3);
 });

@@ -36,7 +36,9 @@ const ASSEMBLE = 'tools/assemble-site.sh';
 // S-MOD 与 S-外链 的条数由产物自己决定（每份文本、每条说明符一行），所以产物没变而条数掉了，
 // 只能是读它的那只手坏了。改页面会改这个数——那正是要它变的时候，由 --selftest 的基线跑当场
 // 报出实际值，不必靠记性。
-const EXPECT_ROWS = 46;
+// 这次改的是**实数钉**：并线把 index.html 的 head 换成了另一侧，恢复成自洽的那一份之后
+// canonical / og:url 这两句元信息回来了，S-外链 多扫两条；钉的是实数，强度不变。
+const EXPECT_ROWS = 49;
 
 // 只查文本字节：位图不是"外链"，它由 deploy-set 的 P 段按 IHDR 量。
 const TEXT_EXT = ['.js', '.mjs', '.cjs', '.css', '.html', '.webmanifest', '.json'];
@@ -124,12 +126,29 @@ function run(site) {
   ok(specs > 0, `S-MOD 至少解析出一条说明符（0 条=没读到，不是全都齐）`, '实际 ' + specs + ' 条');
 
   // ---- S-外链：整份产物只许自给自足 ----
+  // 豁免只有一种形状：**元信息属性**上的绝对 URL，而且必须落在 README 声明的本站前缀下。
+  // 它们是给爬虫读的字符串，浏览器不会去取 —— 与「样式表/脚本/图片那种真取径」不是一回事。
+  // 社交卡那一条还得多一条硬要求：它指的那张图必须真在产物里，否则爬虫拿到的是一张 404 的卡片。
+  // canonical / og:url 指的是站点自身（那一份 index.html），所以只查前缀，不查某个文件。
+  //
+  // 这一段原来只认 og:image / twitter:image 两种：那是写它的时候页面上有的那两种。canonical 与
+  // og:url 是同一类东西（爬虫读的元信息，不是浏览器去取的资源），补进来不是放宽资源检查 ——
+  // 样式表/脚本/图片里出现任何 http(s) 仍然逐条点名。
   const exempt = new Set();
-  for (const m of html.matchAll(/<meta\s+(?:property="og:image"|name="twitter:image")\s+content="(https?:\/\/[^"]+)"/g)) {
-    const v = m[1];
-    const tail = decodeURIComponent(v.slice(PAGES.length + 1));
-    if (PAGES && v.startsWith(PAGES + '/') && tail && present(tail)) exempt.add(v);
-    else ok(false, 'S-外链 社交卡那条绝对 URL 不成立', `${v} · 本站前缀 ${PAGES || '(README 里解析不到)'} · 产物里没有它指的图`);
+  const META_URLS = [
+    [/property="og:image"\s+content="(https?:\/\/[^"]+)"/g, true],
+    [/name="twitter:image"\s+content="(https?:\/\/[^"]+)"/g, true],
+    [/property="og:url"\s+content="(https?:\/\/[^"]+)"/g, false],
+    [/rel="canonical"\s+href="(https?:\/\/[^"]+)"/g, false],
+  ];
+  for (const [re, needFile] of META_URLS) {
+    for (const m of html.matchAll(re)) {
+      const v = m[1];
+      const tail = decodeURIComponent(v.slice(PAGES.length + 1));
+      if (PAGES && v.startsWith(PAGES + '/') && (!needFile || (tail && present(tail)))) exempt.add(v);
+      else ok(false, 'S-外链 元信息那条绝对 URL 不成立',
+        `${v} · 本站前缀 ${PAGES || '(README 里解析不到)'}${needFile ? ' · 产物里没有它指的图' : ''}`);
+    }
   }
   let urls = 0;
   for (const f of files) {
@@ -206,11 +225,11 @@ if (argv[0] === '--selftest') {
   // 两条社交卡各下一刀。针各自必须唯一：og:image 与 twitter:image 的 content 串在这一仓里长得
   // 一模一样，不带上各自的属性名就打不准——而"打不准"在台架里等于"这一类没人证明过"。
   knife('K4 og:image 的本站前缀抄错', (d) => plant(d, 'site/index.html',
-    'property="og:image" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/icons/icon-512.png"',
-    'property="og:image" content="https://z-biz-game.github.io/z-biz-game-ulam-xos/icons/icon-512.png"'), 'S-外链');
+    'property="og:image" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/assets/art/og-card.png"',
+    'property="og:image" content="https://z-biz-game.github.io/z-biz-game-ulam-xos/assets/art/og-card.png"'), 'S-外链');
   knife('K4b twitter:image 指的图不在产物里', (d) => plant(d, 'site/index.html',
-    'name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/icons/icon-512.png"',
-    'name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/icons/nope.png"'), 'S-外链');
+    'name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/assets/art/og-card.png"',
+    'name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-ulam-cos/assets/art/nope.png"'), 'S-外链');
   // 反空转（一）：命名空间声明真的存在，而且闸确实放行它——往产物里再加一条内联 SVG 的 xmlns，
   // rc 必须还是 0。这条若红了，说明放行规则根本没生效，K6 的"会咬"也就无从谈起。
   const green = (name, apply) => {

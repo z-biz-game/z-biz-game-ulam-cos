@@ -26,8 +26,8 @@
 不存在游戏逻辑，`npm install` 不是任何一步的前提，CI 里同样没有它。
 
 ```bash
-npm run check     # 逐文件 node --check
-npm test          # 七套 node 断言（本机 124 行 / 56 259 条断言，0 失败）
+npm run check     # 逐文件 node --check + 资产 IHDR 闸门 + manifest JSON 解析
+npm test          # 九套 node 断言（本机 141 行 / 56 709 条断言，0 失败）
 npm run bake      # 重烘 js/data/lots.js（默认 SAMPLE 档；FULL=1 才跑最贵的两条全量扫描）
 npm run verify    # 真 headless Chrome：5 个场景 @boot @play @routes @save @pointer
 npm start         # http://127.0.0.1:5222/         （npm run dev 同义，显式写端口）
@@ -60,7 +60,7 @@ npm run electron  # 桌面壳（唯一的 devDependency 是 electron，只有这
 | library | 14 | 5 532 |
 | solve | 19 | 370 |
 | state | 17 | 91 |
-| storage | 19 | 224 |
+| storage | 21 | 297 |
 | volume | 16 | 2 109 |
 | anim | 7 | 342 |
 | sound | 8 | 35 |
@@ -114,7 +114,7 @@ tools/bake.mjs             重烘 + 全部 census 打印（SAMPLE 默认，FULL=
 tools/harness.mjs          node 断言台：rows / asserts / fail
 tools/playtest.mjs           CDP 驱动：attach、注入 5 个场景、取 RESULT
 tools/verify.sh            端口 → 起服务 → 起 Chrome → 5 场景 → 收摊
-test/*.test.mjs            七套：brute game library solve state storage volume
+test/*.test.mjs            九套：brute game library solve state storage volume anim sound
 tools/assemble-site.sh  部署产物的唯一清单（pages.yml 与本地闸调同一支）
 tools/deploy-set.mjs  部署集闸：检查即将上传的那份产物
 tools/deploy-set-selftest.mjs  部署集闸的阴性自证（每一类断言当场打红一次）
@@ -130,7 +130,7 @@ MIT，见 `LICENSE`。谎话游戏（Rényi–Ulam / Berlekamp 的搜索博弈�
 
 这个仓没有打包器：站点=一次文件拷贝。以前「拷哪些」写在 `pages.yml` 的 `run:` 里（手抄的几行
 `cp`）。本地 `index.html` 直读仓库根，永远自洽；线上却按那份清单拷，于是页面后来引用的
-`manifest.webmanifest`、`sw.js`、`icons/*` 可能一个都没上去——线上 404，而仓里的引擎测试与
+`manifest.webmanifest`、`sw.js`、`assets/icons/*` 可能一个都没上去——线上 404，而仓里的引擎测试与
 真浏览器闸全绿，因为它们跑的都是仓库根，没有任何一步在「按清单拷」的那个环境下加载过页面。
 
 现在清单只有一份，住在 `tools/assemble-site.sh`：CI 调它拷 `_site`，本地闸调它拷临时目录，
@@ -148,7 +148,7 @@ MIT，见 `LICENSE`。谎话游戏（Rényi–Ulam / Berlekamp 的搜索博弈�
   内联成 base64 的图标先解码再读同一段。后一条不是可选项：图标可能住在清单里而不是盘上的 `.png`
   （有的仓另有一条"零二进制文件"的承诺，那条只约束"有没有 .png 这个文件"）；如果 P 段只筛文件名，
   声明写 512 而真图 192 就一路放行。
-- **钉住两个数**：R 段实际检查的路径条数（`40`）与这一次跑的断言条数（`59`），两个数
+- **钉住两个数**：R 段实际检查的路径条数（`59`）与这一次跑的断言条数（`81`），两个数
   都钉在 `tools/deploy-set.mjs` 顶部的那对常量里。没改页面却掉了，说明解析断了；删掉一张图标会同时
   少一条 R10 与那张的 P1/P2，所以两个数一起钉，断言条数能漂就是闸在缩水的信号。这一节故意只写数值、
   不写那对常量的名字，也不写别仓文档闸的编号：有的仓的文档闸会拿"文档里出现过的同名标识号"回数它
@@ -159,7 +159,7 @@ MIT，见 `LICENSE`。谎话游戏（Rényi–Ulam / Berlekamp 的搜索博弈�
 各下一刀（X1 清单不收位图目录 / X2 模块边改名 / X3 CSS 写绝对路径 / X4 `start_url` 绝对 /
 X5 删光 >=512 图标 / X6 少一个必填字段 / X7 声明尺寸与真图不符 / X8 workflow 不调脚本 /
 X9 CI 不跑闸 / X10 是阴性对照——往入口 JS 追加一行只写在注释里的假路径，闸必须仍然绿、条数仍然
-`40`、断言仍然 `59`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
+`59`、断言仍然 `81`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
 X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上那句 og:image，X13 要清单里真有一段 base64
 图标，没有就打印 SKIP；反过来 X1 没有位图目录可砍时改砍 css，P 段一位都不核时台架直接报靶子不够），
 要求每一刀都让闸**点名**变红。靶子从 `DEPLOY_SET_DUMP=1`
@@ -203,7 +203,8 @@ X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上�
 部署过任何东西，`main` 上的后续提交只存在于 git 里。这一句不是推断：修之前抓线上
 `https://z-biz-game.github.io/z-biz-game-ulam-cos/`（200，7 171 B），`grep -c 'og:image\|twitter:card'`
 得 `0`——首页是 `4928a46` 那一份，社交卡那一句在 git 里、不在网上。这一支脚本的提交上线之后再抓
-是 7 778 B、两句都在，`icons/icon-512.png` 回到 200 / 104 740 B：那一步重新有 artifact 可传了。
+是 7 778 B、两句都在，那一张 512 图标（当时住在 `icons/`，并线后图标统一住 `assets/icons/`）
+回到 200：那一步重新有 artifact 可传了。
 
 修法是把那一步的 body 整个搬进 `tools/site-selfcontained.mjs`，然后让三条路都调它
 （`pages.yml` 传即将上传的那份 `_site`，`ci.yml` 与 `tools/verify.sh` 用无参形态——本闸自己按
@@ -213,7 +214,7 @@ X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上�
 `grep -v w3.org` 那种"主机名当通行证"改成认它挂在哪个属性上——旧写法会连
 `url(https://www.w3.org/Icons/water.png)` 这种真取径的远程图一起放行，台架里 K6 打的就是这一刀。
 
-`node tools/site-selfcontained.mjs` 跑 46 条断言（`S-MOD` 说明符只许自相对 / `S-夹带` 不许带
+`node tools/site-selfcontained.mjs` 跑 49 条断言（`S-MOD` 说明符只许自相对 / `S-夹带` 不许带
 server.cjs、tools、electron 上线 / `S-页面` 产物里那份 index.html 必须还带 `<canvas` /
 `S-接线` Pages+CI+本地三条路都要调到本闸，认的是行首就是那条命令 / `S-外链` 上面那条豁免一种
 都不许多），条数钉在脚本顶部；`--selftest` 把每一类当场打红一次，另两把是反空转（K5 证明豁免
@@ -221,12 +222,12 @@ server.cjs、tools、electron 上线 / `S-页面` 产物里那份 index.html 必
 
 ```
 $ node tools/site-selfcontained.mjs | tail -2
-产物自洽：46 条断言，扫描 20 份文本 · 产物 本闸按清单现拷的临时副本
-rows: 46 fail: 0
+产物自洽：49 条断言，扫描 21 份文本 · 产物 本闸按清单现拷的临时副本
+rows: 49 fail: 0
 GATE_RC=0
 
 $ node tools/site-selfcontained.mjs --selftest | tail -11
-  ok  基线 rows: 46 fail: 0
+  ok  基线 rows: 49 fail: 0
   ok  K1 裸包名说明符 → rc=1 · S-MOD
   ok  K2 产物夹带服务器 → rc=1 · S-夹带
   ok  K2b 上线的 index.html 没有画板 → rc=1 · S-页面

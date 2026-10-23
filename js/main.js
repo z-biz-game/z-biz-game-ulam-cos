@@ -534,14 +534,25 @@ function setMuted(on) {
 
 function fsElement() {
   const d = document;
-  return d.fullscreenElement || d.webkitFullscreenElement || d.mozFullScreenElement || null;
+  // ms 前缀是并线另一侧独有的能力，并进来：老 Edge（EdgeHTML）只有 msRequestFullscreen。
+  // 只做特性检测，不嗅探 UA —— UA 字符串随时会改，"有没有这个能力"是查出来的，不是猜出来的。
+  return d.fullscreenElement || d.webkitFullscreenElement || d.mozFullScreenElement
+    || d.msFullscreenElement || null;
+}
+
+function fsSupported() {
+  const root = document.documentElement;
+  return !!(root.requestFullscreen || root.webkitRequestFullscreen
+    || root.mozRequestFullScreen || root.msRequestFullscreen);
 }
 
 function toggleFullscreen(on) {
   const root = document.documentElement;
   const want = on === undefined ? !fsElement() : !!on;
-  const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen;
-  const req = root.requestFullscreen || root.webkitRequestFullscreen || root.mozRequestFullScreen;
+  const exit = document.exitFullscreen || document.webkitExitFullscreen
+    || document.mozCancelFullScreen || document.msExitFullscreen;
+  const req = root.requestFullscreen || root.webkitRequestFullscreen
+    || root.mozRequestFullScreen || root.msRequestFullscreen;
   if (!req && !exit) { toast('这台设备不提供全屏'); return false; }
   if (want && !fsElement()) {
     if (!req) { toast('这台浏览器只允许手势进入全屏，用系统菜单'); return false; }
@@ -601,6 +612,7 @@ el.helpClose.addEventListener('click', () => toggleHelp(false));
 el.helpVeil.addEventListener('click', (ev) => { if (ev.target === el.helpVeil) toggleHelp(false); });
 document.addEventListener('fullscreenchange', syncFullscreenUi);
 document.addEventListener('webkitfullscreenchange', syncFullscreenUi);
+document.addEventListener('MSFullscreenChange', syncFullscreenUi);   // 老 Edge（并线另一侧独有的能力）
 el.again.addEventListener('click', restart);
 el.next.addEventListener('click', () => {
   const nl = nextLot(app.index - 1);
@@ -977,77 +989,12 @@ syncMuteUi();
 syncPauseUi();
 syncFullscreenUi();
 
+// 不支持全屏也要给个说法（并线另一侧独有的能力，并进来）：只把按钮灰掉而不解释，玩家会以为
+// 这功能没做完。按钮不禁用 —— 点下去还有一句人话的 toast，两边都给理由；实现只有这一份。
+if (!fsSupported() && el.fullscreen) {
+  el.fullscreen.title = '这个浏览器不提供元素全屏（iOS Safari 请用「添加到主屏幕」独立打开）';
+}
+
 // No rAF loop of its own: the view flashes the bumped cells and then stops. The shell drives the
 // first measure explicitly so the board is drawn before any test probes a point on it.
 apply();
-
-// ---- 全屏开关（#btn-fullscreen）----
-// 绑的是本页 HUD 上真实存在的那个按钮。全屏最常见的假实现就是引用一个并不存在的
-// id：点下去什么也不会发生，量具却算它"已实现"。所以这里找不到按钮就直接不装。
-(function bindFullscreen() {
-  const btn = document.getElementById('btn-fullscreen');
-  if (!btn) return;
-  const root = document.documentElement;
-  // 只做特性检测，不嗅探 UA：iOS Safari 是 webkitRequestFullscreen，老 Edge 是 ms 前缀，
-  // 而 UA 字符串随时会改。"有没有这个能力"是查出来的，不是猜出来的。
-  const req = root.requestFullscreen || root.webkitRequestFullscreen || root.msRequestFullscreen;
-  const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-  const current = () => document.fullscreenElement || document.webkitFullscreenElement
-    || document.msFullscreenElement || null;
-
-  // 不支持也要给个说法：只把按钮灰掉而不解释，玩家会以为这功能没做完。
-  // supported 这枚标记不能省：下面 sync() 每次都会重写 title，不挡住的话，装的时候刚写
-  // 进去的人话原因会被随后的 sync() 立刻抹成"全屏 (F)"——禁用就变成一句没有理由的禁用。
-  let supported = !!req;
-  const unsupported = () => {
-    supported = false;
-    btn.disabled = true;
-    btn.title = '这个浏览器不提供元素全屏（iOS Safari 请用「添加到主屏幕」独立打开）';
-  };
-  if (!req) unsupported();
-
-  // fullscreen 返回 Promise，被拒时必须吃掉：iOS Safari 对多数非 video 元素直接拒绝，
-  // 让这个 rejection 冒泡出去会变成一条未捕获错误，整局游戏跟着挂。
-  const settle = (p) => { if (p && p.catch) p.catch(unsupported); };
-
-  // 进出都能走：已经全屏时这次调用是退出，不是"再进一次"。
-  function toggle() {
-    try {
-      if (current()) {
-        if (exit) settle(exit.call(document));
-      } else if (req) {
-        settle(req.call(root));
-      } else {
-        unsupported();
-      }
-    } catch (e) {
-      unsupported();
-    }
-  }
-
-  // Esc 和系统手势退出都不经过我们的代码，按钮状态只能靠 fullscreenchange 回写，
-  // 否则用户已经退出、HUD 还停在"退出全屏"，下一次点击反而会重新进全屏。
-  function sync() {
-    const on = !!current();
-    btn.setAttribute('aria-pressed', String(on));
-    btn.textContent = on ? "退出全屏" : "全屏";
-    if (supported) btn.title = "全屏" + '（F）';
-    const body = document.body;
-    if (body && body.classList) body.classList.toggle('fullscreen', on);
-  }
-
-  btn.addEventListener('click', toggle);
-  window.addEventListener('keydown', (ev) => {
-    if (ev.key !== 'f' && ev.key !== 'F') return;
-    const t = ev.target;
-    // 盘号 / 种子这类输入框里打字不能触发全屏，否则玩家输 seed 输到一半屏幕没了。
-    if (t && /input|textarea|select/i.test(t.tagName || '')) return;
-    if (ev.repeat || ev.metaKey || ev.ctrlKey || ev.altKey) return;
-    ev.preventDefault();
-    toggle();
-  });
-  window.addEventListener('fullscreenchange', sync);
-  window.addEventListener('webkitfullscreenchange', sync);
-  window.addEventListener('MSFullscreenChange', sync);
-  sync();
-})();

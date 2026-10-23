@@ -12,6 +12,7 @@
 
 const KEY = 'ulam.save.v1';
 // 存档格式版本号。写档带上、读档校验：将来改形状时旧档宁可整档丢弃，也不能被误读。
+// （这一段是并线另一侧独有的能力，版本门本身与两段式解码互不干扰：先判版本，再逐条解码。）
 export const SAVE_VERSION = 1;
 
 export const SAVE_KEY = KEY;
@@ -49,33 +50,60 @@ function blank() {
 
 let cache = null;
 
-// 数字字段的归一自带一份，不依赖仓里有没有 count() —— 少一层隐式耦合。
-function recordNum(v) {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+// ---- 两段式解码 -------------------------------------------------------------
+// 第一段：`JSON.parse`。这一段的坏输入（垃圾串、`null`、数组）只能整体退回空档 —— 因为连
+// "有哪些记录"都读不出来，没有更细的粒度可言。
+// 第二段：**逐条**。一条记录长歪了（`null`、缺字段、类型错、越界值）只丢那一条，其余照旧。
+// 上一版把整档 `Object.assign(blank(), parsed)` 似地整体接受，于是手改过的
+// `{"records":{"1-1":null}}` 会让 renderMenu() 在 `r.best` 上抛 TypeError，整局冻死。
+// test/storage.test.mjs 用四条垃圾样本钉住这条边界。
+function flag(v) {
+  return !!v;
 }
 
-// 存档两段式解码的第一段：整档 JSON 落到这里之后，**逐字段**归一。
-// 一条记录不是"能用/不能用"二选一 —— 类型错的字段自己退成默认值，整条照样留下。
-// 第二段（sanitizeRecords）在下面：它只丢掉归一后彻底没意义的记录，别的记录不受牵连。
-function sanitizeRecord(r) {
-  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
-  const out = {};
-  out.solved = !!r.solved;
-  out.best = r.best === null || r.best === undefined ? null : recordNum(r.best);
-  out.plays = recordNum(r.plays);
-  out.atPar = !!r.atPar;
-  return out;
+export function decodeRecord(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const best = Number(v.best);
+  const plays = count(v.plays);
+  const rec = {
+    solved: flag(v.solved),
+    best: Number.isFinite(best) && best >= 0 && best <= 1e6 ? Math.floor(best) : null,
+    plays,
+    atPar: flag(v.atPar),
+  };
+  // 一条记录至少要说得出"打过没有"：plays=0 且没有 best 又没 solved 的是空壳，丢掉。
+  if (!rec.plays && rec.best === null && !rec.solved) return null;
+  if (!rec.solved && rec.best !== null) rec.solved = true; // 有成绩就是拿下过
+  return rec;
 }
 
-// 逐条隔离：坏的那条丢掉，好的那些原样留下，绝不因为一条把整份存档作废。
-function sanitizeRecords(p) {
+function decodeDaily(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const q = Number(v.questions);
+  return {
+    id: typeof v.id === 'string' ? v.id : '',
+    done: flag(v.done),
+    questions: Number.isFinite(q) && q >= 0 && q <= 1e6 ? Math.floor(q) : 0,
+    at: Number.isFinite(Number(v.at)) ? Number(v.at) : 0,
+  };
+}
+
+// 第二段丢掉的条数：外壳用它回答"存档里有没有被人手改坏的东西"，测试用它证明"确实丢了、而不是
+// 根本没读到"。累加而不是覆盖，因为 records 与 daily 各丢各的。
+let corruptDropped = 0;
+export function corruptCount() {
+  return corruptDropped;
+}
+
+function decodeMap(raw, decode) {
   const out = {};
-  if (!p || typeof p !== 'object' || Array.isArray(p)) return out;
-  for (const [id, rec] of Object.entries(p)) {
-    const clean = sanitizeRecord(rec);
-    if (clean) out[id] = clean;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  let dropped = 0;
+  for (const [k, v] of Object.entries(raw)) {
+    const good = decode(v);
+    if (good) out[k] = good; else dropped++;
   }
+  corruptDropped += dropped;
   return out;
 }
 
@@ -83,7 +111,7 @@ function load() {
   if (cache) return cache;
   corruptDropped = 0;
   const ls = backend();
-  const raw = ls ? window.localStorage.getItem(KEY) : null;
+  const raw = ls ? ls.getItem(KEY) : null;
   if (raw) {
     try {
       const p = JSON.parse(raw);
@@ -93,8 +121,9 @@ function load() {
         const base = blank();
         const s = (p.stats && typeof p.stats === 'object') ? p.stats : {};
         cache = {
-          records: sanitizeRecords(p.records),
-          daily: p.daily && typeof p.daily === 'object' ? p.daily : base.daily,
+          v: SAVE_VERSION,
+          records: decodeMap(p.records, decodeRecord),
+          daily: decodeMap(p.daily, decodeDaily),
           unlocked: count(p.unlocked) || base.unlocked,
           stats: {
             plays: count(s.plays),
@@ -119,7 +148,7 @@ function persist() {
   const ls = backend();
   if (!ls) return false;
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(cache));
+    ls.setItem(KEY, JSON.stringify(cache));
     return true;
   } catch (err) {
     return false;

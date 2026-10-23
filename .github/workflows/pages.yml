@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       # 拷哪些不写在这里——写在 tools/assemble-site.sh，本地闸与 CI 调同一支脚本。
       # 以前这里是手抄的三行 cp（index.html/css/js），于是页面后来引用的
-      # manifest.webmanifest、sw.js、icons/* 全都上不了线：线上 404，而 CI 一路绿，
+      # manifest.webmanifest、sw.js、assets/icons/* 全都上不了线：线上 404，而 CI 一路绿，
       # 因为没有任何一步加载过那份产物。服务器、台架、文档、node_modules 仍在 artifact 外面。
       - name: Assemble static site
         run: bash tools/assemble-site.sh _site

@@ -15,7 +15,9 @@ cd "$HERE" || exit 2
 [ -d "$DEST" ] || mkdir -p "$DEST" || { echo "cannot create $DEST" >&2; exit 2; }
 
 # 进站点的：玩家浏览器会去要的东西，一个都不落。
-cp index.html manifest.webmanifest sw.js "$DEST/"
+# favicon.ico 在这一行里：index.html 用 <link rel="icon" href="favicon.ico"> 指着它，
+# 浏览器一定去要 —— 清单里漏了它，线上就是一次 404，而仓里的闸一条都不会红。
+cp index.html manifest.webmanifest sw.js favicon.ico "$DEST/"
 cp -r css js "$DEST/"
 # 位图目录名不统一（icons/ 与 assets/ 都在用）：按存在与否收，缺的那个不是错误。
 for d in icons assets; do
