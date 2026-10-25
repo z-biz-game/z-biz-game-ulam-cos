@@ -39,6 +39,7 @@
      理由不是洁癖，是覆盖：部署集闸的引用走查从 index.html 的 href/src 出发，凡解析出来是 .js
      的就当一站再扫一遍 —— 注册脚本作为独立一站，"sw.js 在不在产物里"才会被真的量到。
      内联在 <script> 块里的注册语句走查读不到，于是 sw.js 掉了也没有一条断言会红。 -->
+  <link rel="stylesheet" href="css/studio.css" />
 </head>
 <body>
 
@@ -177,5 +178,6 @@
 <script type="module" src="js/main.js"></script>
 <script src="js/sw-register.js"></script>
 <script src="js/haptics.js"></script>
+  <div class="studio-atmosphere" aria-hidden="true"></div>
 </body>
 </html>
