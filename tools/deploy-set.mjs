@@ -34,11 +34,11 @@ const ASSEMBLE = 'tools/assemble-site.sh';
 // 这次改的是**实数钉**：并线把 index.html 的 head 换成了另一侧（少了 canonical / og:url /
 // 一整排图标 / apple-touch-icon），恢复成自洽的那一份之后引用从 40 条涨到 59 条——
 // 钉的是实数，强度不变（R12 这条断言本身一个字没动，它仍然是"条数不许默默变少"）。
-const EXPECT_CHECKS = 59;
+const EXPECT_CHECKS = 67;
 // 全绿时这个闸实际跑的断言条数（W/R/P 三段之和）。钉住它，「少一条断言」就不可能是绿的：
 // 删掉 manifest 里的一张图标会同时少一条 R10 与那张的 P1/P2 两行——那条路径缺文件本来就该红，
 // 但 rows 能漂就是闸在缩水的信号，所以两个数一起钉。
-const EXPECT_ROWS = 81;
+const EXPECT_ROWS = 89;
 
 let rows = 0;
 const fails = [];

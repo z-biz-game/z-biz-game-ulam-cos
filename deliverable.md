@@ -92,7 +92,7 @@
 
 | 闸 | 改动 | 理由 |
 | --- | --- | --- |
-| `tools/deploy-set.mjs` | `EXPECT_CHECKS` 40 → **59**、`EXPECT_ROWS` 59 → **81** | 钉的是实数，强度不变：head 恢复成自洽的那一份后引用从 40 条涨到 59 条（canonical / og:url / 一整排图标 / apple-touch-icon / favicon.ico 回到引用面里）。R12/R13 两句断言一个字没动 |
+| `tools/deploy-set.mjs` | `EXPECT_CHECKS` 40 → **59**（2026-10-28 补齐离线壳后重钉 67）、`EXPECT_ROWS` 59 → **81**（重钉 89） | 钉的是实数，强度不变：head 恢复成自洽的那一份后引用从 40 条涨到 59 条（canonical / og:url / 一整排图标 / apple-touch-icon / favicon.ico 回到引用面里）。R12/R13 两句断言一个字没动 |
 | `tools/site-selfcontained.mjs` | `EXPECT_ROWS` 46 → **49** | 同上，实数钉 |
 | `tools/site-selfcontained.mjs` | S-外链 的豁免从「只有 og:image / twitter:image」扩到「canonical / og:url 也算元信息」 | 量具盲区：canonical / og:url 是**给爬虫读的字符串，浏览器不会去取**，与样式表/脚本/图片那种真取径不是一回事。豁免仍要求落在 README 声明的本站前缀下；资源面一条没松（样式表/脚本/图片里出现任何 http(s) 仍然逐条点名） |
 | `tools/site-selfcontained.mjs` | `--selftest` 的 K4 / K4b 两根针改指社交卡的新地址 | 针必须打在真实的页面上；台架的刀口跟着页面走 |
@@ -103,7 +103,7 @@
 | --- | --- |
 | `npm run check` | OK（资产闸门 12 个资产 / 240 830 B，真 PNG、尺寸对得上声明、无 0 字节、无 SVG 冒充） |
 | `npm run unit`（九套） | **141 行 / 56 709 条断言 / fail: 0**（storage 21 行 / 297 条） |
-| `node tools/deploy-set.mjs` | 59 条引用（含 4 张位图尺寸核对）/ **81 行 / fail: 0** |
+| `node tools/deploy-set.mjs` | 67 条引用（含 4 张位图尺寸核对）/ **89 行 / fail: 0** |
 | `node tools/deploy-set-selftest.mjs` | 十一刀全咬 + 阴性对照不发威，**rc=0**（条数仍 59 / rows 仍 81） |
 | `node tools/site-selfcontained.mjs` | **49 行 / fail: 0**（扫 21 份文本） |
 | `node tools/site-selfcontained.mjs --selftest` | 九刀全咬 + 两把反空转，**rc=0** |
