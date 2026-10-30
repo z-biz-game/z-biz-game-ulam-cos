@@ -252,3 +252,8 @@ rows: 47 fail: 1
 ## 在线试玩
 
 <https://z-biz-game.github.io/z-biz-game-ulam-cos/>（`main` 分支推送即自动部署）
+
+## 文档对账这一跑的读数
+
+文档行号对账：3 份文档 · 11 条引用 · 3 条带指认 · 0 条续引 · 0 条仓外。
+这条腿实发 21 条判据，`rows: 21 fail: 0`。

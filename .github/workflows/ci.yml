@@ -24,6 +24,9 @@ jobs:
         run: npm run check
       - name: Suites
         run: npm run unit
+
+      - name: Docs cite real lines
+        run: node tools/docs-test.mjs
       # 部署集闸：按 tools/assemble-site.sh 那份清单真拷一遍产物，要求页面会去要的东西
       # 都在里面。这一仓曾经因为清单落后于页面而线上 404 自己的 manifest/sw.js/图标，
       # 而本地一切全绿——因为本地根本没有「按清单拷」这一步。
